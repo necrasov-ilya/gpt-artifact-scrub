@@ -102,6 +102,13 @@ def build_stats_text(stats: Dict[str, int]) -> str:
         parts.append(f"маркеры списков: {stats['bullets']}")
     if stats.get("nbsp"):
         parts.append(f"неразрывные пробелы: {stats['nbsp']}")
+    # LLM artifacts
+    if stats.get("llm_tokens"):
+        parts.append(f"маркеры LLM: {stats['llm_tokens']}")
+    if stats.get("llm_cite"):
+        parts.append(f"cite: {stats['llm_cite']}")
+    if stats.get("llm_bracket_groups"):
+        parts.append(f"скобочные группы: {stats['llm_bracket_groups']}")
     if not parts:
         return "Ничего не пришлось заменять — текст уже в порядке."
     return "Заменил: " + ", ".join(parts) + "."
