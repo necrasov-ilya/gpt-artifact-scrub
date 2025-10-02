@@ -1,5 +1,14 @@
 import re
-from normalize import normalize_text
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+from src.normalize import NormalizationStage, normalize_text
+from src.normalization import default_registry, run_pipeline
 
 
 def _guarantees(text: str) -> None:
@@ -57,6 +66,19 @@ def main():
         assert "()" not in cleaned and "[]" not in cleaned and "{}" not in cleaned
         for line in cleaned.splitlines():
             assert not re.fullmatch(r"[ \t*]*", line), f"Empty line of asterisks: {line!r}"
+        for key in ("llm_tokens", "llm_cite", "llm_bracket_groups"):
+            assert key in stats
+
+    class UpperCaseStage(NormalizationStage):
+        name = "uppercase_test"
+
+        def apply(self, context):
+            context.set_text(context.text.upper())
+
+    demo_pipeline = default_registry.create_pipeline()
+    assert demo_pipeline.stages, "Default pipeline must include at least one stage"
+    result = run_pipeline("Тест cite turn0search1", list(demo_pipeline.stages) + [UpperCaseStage()])
+    assert result.text == "ТЕСТ", "Custom stage should run after default pipeline"
 
 if __name__ == "__main__":
     main()
