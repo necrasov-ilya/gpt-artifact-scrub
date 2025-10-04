@@ -18,6 +18,7 @@ from ...modules.images.infrastructure.tempfiles import TempFileManager
 from ...modules.images.services.queue import EmojiProcessingQueue
 from ...modules.images.services.user_settings import UserSettingsService
 from ...modules.images.utils.image import compute_image_hash, get_image_size, suggest_grids
+from ...modules.shared.services.anti_spam import AntiSpamGuard
 
 
 class EmojiStates(StatesGroup):
@@ -80,6 +81,8 @@ def create_emoji_router(
     creation_limit: int,
     retention_minutes: int,
     fragment_username: str | None,
+    anti_spam: AntiSpamGuard,
+    grid_option_cap: int | None,
 ) -> Router:
     router = Router(name="emoji_handler")
 
@@ -89,28 +92,49 @@ def create_emoji_router(
         & ~F.text.startswith("/")
     )
     async def on_image(message: Message, state: FSMContext) -> None:
+        if not message.from_user:
+            return
+        user_id = message.from_user.id
+        if not await anti_spam.try_acquire(user_id):
+            await message.answer("Не так быстро, пожалуйста. Дайте боту чуть-чуть времени.")
+            return
         file = message.photo[-1] if message.photo else message.document
         if file is None:
             return
-        buffer = io.BytesIO()
-        await message.bot.download(file, destination=buffer)
-        image_bytes = buffer.getvalue()
-        image_hash = compute_image_hash(image_bytes)
-        width, height = get_image_size(image_bytes)
+        try:
+            buffer = io.BytesIO()
+            await message.bot.download(file, destination=buffer)
+            image_bytes = buffer.getvalue()
+            image_hash = compute_image_hash(image_bytes)
+            width, height = get_image_size(image_bytes)
+        except Exception:
+            await anti_spam.release(user_id)
+            raise
         limit_tiles = min(max_tiles, creation_limit)
         plan = suggest_grids(width, height, max_tiles=limit_tiles)
+        if grid_option_cap is not None:
+            capped_options = [option for option in plan.options if option.tiles <= grid_option_cap]
+            if capped_options:
+                plan_options = capped_options
+                fallback = capped_options[0]
+            else:
+                plan_options = plan.options
+                fallback = plan.fallback
+        else:
+            plan_options = plan.options
+            fallback = plan.fallback
         settings = await user_settings.get(message.from_user.id)
         extension = await _resolve_extension(message.bot, file)
         default_grid = settings.default_grid
-        if default_grid.tiles > limit_tiles or default_grid not in plan.options:
-            default_grid = plan.fallback
+        if default_grid.tiles > limit_tiles or default_grid not in plan_options:
+            default_grid = fallback
         await state.clear()
         await state.set_state(EmojiStates.waiting_for_grid)
         await state.update_data(
             image_bytes=image_bytes,
             image_hash=image_hash,
             file_unique_id=file.file_unique_id,
-            suggested=[option.encode() for option in plan.options],
+            suggested=[option.encode() for option in plan_options],
             default_padding=settings.default_padding,
             default_grid=default_grid.encode(),
             image_extension=extension,
@@ -125,7 +149,7 @@ def create_emoji_router(
         )
         await message.answer(
             f"{warn_text}\n\n{description}",
-            reply_markup=_grid_keyboard(plan.options, default_grid),
+            reply_markup=_grid_keyboard(plan_options, default_grid),
         )
 
     @router.callback_query(EmojiStates.waiting_for_grid, F.data.startswith("grid:"))
@@ -191,6 +215,8 @@ def create_emoji_router(
             else:
                 await processing_message.edit_text("Готово!", parse_mode=ParseMode.HTML)
                 await _send_result(callback.message, outcome.result, fragment_username)
+            finally:
+                await anti_spam.release(callback.from_user.id)
 
         asyncio.create_task(finalize())
 
