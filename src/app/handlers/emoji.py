@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 from datetime import UTC, datetime
 from typing import Iterable
+from uuid import uuid4
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -186,7 +187,9 @@ def create_emoji_router(
         image_hash: str = data["image_hash"]
         file_unique_id: str = data["file_unique_id"]
         extension = data.get("image_extension", "png")
-        path = await temp_files.write_bytes(image_bytes, suffix=f".{extension}")
+        job_token = uuid4().hex[:8]
+        job_subdir = Path(str(callback.from_user.id)) / f"job_{image_hash[:6]}_{job_token}"
+        path = await temp_files.write_bytes(image_bytes, suffix=f".{extension}", subdir=job_subdir)
         request = EmojiPackRequest(
             user_id=callback.from_user.id,
             chat_id=callback.message.chat.id,

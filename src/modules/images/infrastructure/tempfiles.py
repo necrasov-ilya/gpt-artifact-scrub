@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from uuid import uuid4
 
 import aiofiles
@@ -29,11 +30,13 @@ class TempFileManager:
                 await self._cleanup_task
             self._cleanup_task = None
 
-    async def write_bytes(self, data: bytes, suffix: str = ".bin") -> Path:
+    async def write_bytes(self, data: bytes, suffix: str = ".bin", *, subdir: Union[str, Path, None] = None) -> Path:
         if not suffix.startswith("."):
             suffix = f".{suffix}"
         filename = f"tmp_{uuid4().hex}{suffix}"
-        path = self._base_dir / filename
+        target_dir = self._base_dir / Path(subdir) if subdir else self._base_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / filename
         async with aiofiles.open(path, "wb") as f:
             await f.write(data)
         return path
@@ -49,11 +52,14 @@ class TempFileManager:
     async def cleanup(self) -> None:
         cutoff = datetime.utcnow() - self._retention
         async with self._lock:
-            for path in self._base_dir.glob("tmp_*"):
+            for path in self._base_dir.iterdir():
                 try:
                     stat = await asyncio.to_thread(path.stat)
                 except FileNotFoundError:
                     continue
                 mtime = datetime.utcfromtimestamp(stat.st_mtime)
-                if mtime < cutoff:
+                if path.is_dir():
+                    if mtime < cutoff:
+                        await asyncio.to_thread(shutil.rmtree, path, True)
+                elif path.name.startswith("tmp_") and mtime < cutoff:
                     await asyncio.to_thread(path.unlink)

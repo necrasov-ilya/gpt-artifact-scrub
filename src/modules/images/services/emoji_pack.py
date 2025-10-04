@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 
 import aiofiles
@@ -29,13 +30,14 @@ class EmojiPackService:
         async with aiofiles.open(request.file_path, "rb") as f:
             data = await f.read()
 
-        prefix = f"emoji_{request.user_id}_{request.image_hash[:6]}"
+        job_dir = request.file_path.parent
+        prefix = request.file_path.stem
         tiles = slice_into_tiles(
             image_bytes=data,
             grid=request.grid,
             padding=request.padding,
             tile_size=self._tile_size,
-            temp_dir=self._temp_dir,
+            temp_dir=job_dir,
             prefix=prefix,
         )
 
@@ -51,6 +53,11 @@ class EmojiPackService:
                 request.file_path.unlink(missing_ok=True)
             except Exception:
                 pass
+            if job_dir != self._temp_dir:
+                try:
+                    await asyncio.to_thread(shutil.rmtree, job_dir, True)
+                except Exception:
+                    pass
 
         outcome = EmojiJobOutcome(request=request, result=result)
         await self._storage.save_job_outcome(outcome)
