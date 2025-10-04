@@ -19,6 +19,8 @@ from ..modules.images.services.emoji_pack import EmojiPackService
 from ..modules.images.services.queue import EmojiProcessingQueue
 from ..modules.images.services.user_settings import UserSettingsService
 from ..modules.text.services.normalization import TextNormalizationService
+from ..modules.shared.services.anti_spam import AntiSpamGuard
+from ..modules.shared.services.usage_stats import UsageStatsService
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,8 @@ class AppContainer:
     temp_files: TempFileManager
     text_service: TextNormalizationService
     user_settings: UserSettingsService
+    anti_spam: AntiSpamGuard
+    usage_stats: UsageStatsService
     emoji_service: EmojiPackService | None = None
     emoji_queue: EmojiProcessingQueue | None = None
     telegram_client: TelegramEmojiClient | None = None
@@ -42,6 +46,8 @@ class AppContainer:
         await temp_files.start()
         default_grid = EmojiGridOption.decode(config.emoji_grid_default.replace("×", "x"))
         grid_limit = min(config.emoji_max_tiles, config.emoji_creation_limit)
+        anti_spam = AntiSpamGuard()
+        usage_stats = UsageStatsService(storage)
         user_settings = UserSettingsService(
             storage,
             default_grid=default_grid,
@@ -55,6 +61,8 @@ class AppContainer:
             temp_files=temp_files,
             text_service=text_service,
             user_settings=user_settings,
+            anti_spam=anti_spam,
+            usage_stats=usage_stats,
         )
 
     def create_bot(self) -> Bot:
@@ -82,8 +90,8 @@ class AppContainer:
             workers=self.config.emoji_queue_workers,
         )
         dispatcher = Dispatcher()
-        dispatcher.include_router(create_commands_router(self.user_settings))
-        dispatcher.include_router(create_text_router(self.text_service))
+        dispatcher.include_router(create_commands_router(self.user_settings, self.usage_stats))
+        dispatcher.include_router(create_text_router(self.text_service, self.anti_spam, self.usage_stats))
         dispatcher.include_router(
             create_emoji_router(
                 temp_files=self.temp_files,
@@ -94,6 +102,9 @@ class AppContainer:
                 creation_limit=self.config.emoji_creation_limit,
                 retention_minutes=self.config.temp_retention_minutes,
                 fragment_username=self.config.fragment_username,
+                anti_spam=self.anti_spam,
+                grid_option_cap=self.config.emoji_grid_tile_cap,
+                usage_stats=self.usage_stats,
             )
         )
         dispatcher.include_router(create_unsupported_router())
