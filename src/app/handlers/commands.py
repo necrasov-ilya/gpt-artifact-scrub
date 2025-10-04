@@ -1,28 +1,48 @@
 from __future__ import annotations
 
 from aiogram import Router
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from ...modules.images.domain.models import EmojiGridOption
 from ...modules.images.services.user_settings import UserSettingsService
+from ...modules.shared.services.usage_stats import UsageStatsService
 
 START_TEXT = (
-    "Привет! Я помогаю чистить тексты от LLM-артефактов и делаю кастом-эмодзи паки."
-    "\n\nОтправьте текст — я нормализую его и аккуратно отредактирую."
-    "\nОтправьте изображение — предложу сетку, нарежу и загружу пак custom emoji."
+    "Привет! Я — бот, который вычёсывает артефакты из текстов и собирает свежие кастом-эмодзи."
+    "\n\nНапишите мне абзац — аккуратно расставлю тире и кавычки, уберу служебный мусор и верну чистый вариант."
+    "\nПришлите картинку — подберу сетку по пропорциям, помогу с padding, нарежу PNG и загружу отдельный пак."
+    "\n\nХочется деталей — загляните в /help."
 )
 
 HELP_TEXT = (
-    "ℹ️ Что умею:\n"
-    "• Тексты: нормализация + орфография/пунктуация/стиль без искажения фактов и краткое резюме правок.\n"
-    "• Изображения: анализ пропорций, выбор сетки, padding 0–5 px, нарезка 100×100 PNG, выгрузка custom emoji.\n"
-    "• Настройки: /settings grid=2x2 pad=2 — сохраню сетку и padding по умолчанию.\n"
-    "\nCustom emoji доступны только в Telegram Premium. Исходные изображения удаляются спустя заданный срок."
+    "🧹 Текстовые сообщения\n"
+    "Я выправляю типографику, вычищаю LLM-токены и присылаю короткий отчёт о том, что поменялось. Никаких фантазий — только осторожная правка.\n\n"
+    "🧩 Эмодзи из изображений\n"
+    "Киньте изображение — я оценю размеры, предложу несколько сеток и попрошу выбрать padding от 0 до 5 пикселей."
+    " Тайлы конвертирую в аккуратные PNG 100×100 и создам новый кастом-пак. Премиум в Telegram всё ещё обязателен, зато каждый аплоад — отдельная подборка без мусора.\n\n"
+    "⚙️ Настройки и сервис\n"
+    "Команда /settings grid=RxC pad=N сохраняет ваш любимый пресет. Если ограничить количество плиток надо заранее, установите переменную EMOJI_GRID_TILE_CAP в .env."
+    " Исходные файлы живут недолго и удаляются после обработки, а при слишком частых запросах я вежливо прошу сделать паузу. Нужна диагностика — /logs пришлёт свежие записи журнала."
 )
 
 
-def create_commands_router(user_settings: UserSettingsService) -> Router:
+def _get_command_args(command: CommandObject | None) -> str:
+    if command is None or not command.args:
+        return ""
+    return command.args.strip()
+
+
+def _parse_key_value_args(args: str) -> dict[str, str]:
+    parts: dict[str, str] = {}
+    for token in args.split():
+        if "=" in token:
+            key, value = token.split("=", 1)
+            parts[key.lower()] = value
+    return parts
+
+
+def create_commands_router(user_settings: UserSettingsService, usage_stats: UsageStatsService) -> Router:
     router = Router(name="commands")
 
     @router.message(Command("start"))
@@ -34,9 +54,9 @@ def create_commands_router(user_settings: UserSettingsService) -> Router:
         await message.answer(HELP_TEXT)
 
     @router.message(Command("settings"))
-    async def settings_cmd(message: Message) -> None:
+    async def settings_cmd(message: Message, command: CommandObject) -> None:
         user_id = message.from_user.id
-        args = message.get_args()
+        args = _get_command_args(command)
         if not args:
             settings = await user_settings.get(user_id)
             await message.answer(
@@ -46,11 +66,7 @@ def create_commands_router(user_settings: UserSettingsService) -> Router:
                 "Чтобы изменить: /settings grid=3x3 pad=2",
             )
             return
-        parts = dict()
-        for token in args.split():
-            if "=" in token:
-                key, value = token.split("=", 1)
-                parts[key.lower()] = value
+        parts = _parse_key_value_args(args)
         errors = []
         grid_value = parts.get("grid")
         pad_value = parts.get("pad")
@@ -93,5 +109,29 @@ def create_commands_router(user_settings: UserSettingsService) -> Router:
             f"• Сетка: {updated_grid.as_label()}\n"
             f"• Padding: {updated_padding}px"
         )
+
+    @router.message(Command("logs"))
+    async def logs_cmd(message: Message, command: CommandObject) -> None:
+        args = _get_command_args(command)
+        page = 1
+        if args:
+            try:
+                page = max(1, int(args.split()[0]))
+            except ValueError:
+                await message.answer("Укажите номер страницы: /logs 2")
+                return
+
+        stats_page = await usage_stats.get_page(page)
+        if stats_page.total_users == 0:
+            await message.answer("Пока никто не пользовался ботом — статистика появится, когда придут первые запросы.")
+            return
+
+        lines = ["📊 Статистика пользователей", f"Всего: {stats_page.total_events}"]
+        start_rank = (stats_page.page - 1) * usage_stats.page_size + 1
+        for index, entry in enumerate(stats_page.entries, start=start_rank):
+            lines.append(f"{index}. {entry.label} — {entry.total_count}")
+        lines.append("")
+        lines.append(f"📄 Страница {stats_page.page} из {stats_page.pages}")
+        await message.answer("\n".join(lines))
 
     return router

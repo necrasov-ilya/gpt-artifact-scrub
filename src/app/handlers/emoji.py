@@ -19,6 +19,7 @@ from ...modules.images.services.queue import EmojiProcessingQueue
 from ...modules.images.services.user_settings import UserSettingsService
 from ...modules.images.utils.image import compute_image_hash, get_image_size, suggest_grids
 from ...modules.shared.services.anti_spam import AntiSpamGuard
+from ...modules.shared.services.usage_stats import UsageStatsService
 
 
 class EmojiStates(StatesGroup):
@@ -83,6 +84,7 @@ def create_emoji_router(
     fragment_username: str | None,
     anti_spam: AntiSpamGuard,
     grid_option_cap: int | None,
+    usage_stats: UsageStatsService,
 ) -> Router:
     router = Router(name="emoji_handler")
 
@@ -98,59 +100,59 @@ def create_emoji_router(
         if not await anti_spam.try_acquire(user_id):
             await message.answer("Не так быстро, пожалуйста. Дайте боту чуть-чуть времени.")
             return
-        file = message.photo[-1] if message.photo else message.document
-        if file is None:
-            return
         try:
+            file = message.photo[-1] if message.photo else message.document
+            if file is None:
+                return
             buffer = io.BytesIO()
             await message.bot.download(file, destination=buffer)
             image_bytes = buffer.getvalue()
             image_hash = compute_image_hash(image_bytes)
             width, height = get_image_size(image_bytes)
-        except Exception:
-            await anti_spam.release(user_id)
-            raise
-        limit_tiles = min(max_tiles, creation_limit)
-        plan = suggest_grids(width, height, max_tiles=limit_tiles)
-        if grid_option_cap is not None:
-            capped_options = [option for option in plan.options if option.tiles <= grid_option_cap]
-            if capped_options:
-                plan_options = capped_options
-                fallback = capped_options[0]
+            limit_tiles = min(max_tiles, creation_limit)
+            plan = suggest_grids(width, height, max_tiles=limit_tiles)
+            if grid_option_cap is not None:
+                capped_options = [option for option in plan.options if option.tiles <= grid_option_cap]
+                if capped_options:
+                    plan_options = capped_options
+                    fallback = capped_options[0]
+                else:
+                    plan_options = plan.options
+                    fallback = plan.fallback
             else:
                 plan_options = plan.options
                 fallback = plan.fallback
-        else:
-            plan_options = plan.options
-            fallback = plan.fallback
-        settings = await user_settings.get(message.from_user.id)
-        extension = await _resolve_extension(message.bot, file)
-        default_grid = settings.default_grid
-        if default_grid.tiles > limit_tiles or default_grid not in plan_options:
-            default_grid = fallback
-        await state.clear()
-        await state.set_state(EmojiStates.waiting_for_grid)
-        await state.update_data(
-            image_bytes=image_bytes,
-            image_hash=image_hash,
-            file_unique_id=file.file_unique_id,
-            suggested=[option.encode() for option in plan_options],
-            default_padding=settings.default_padding,
-            default_grid=default_grid.encode(),
-            image_extension=extension,
-        )
+            settings = await user_settings.get(message.from_user.id)
+            extension = await _resolve_extension(message.bot, file)
+            default_grid = settings.default_grid
+            if default_grid.tiles > limit_tiles or default_grid not in plan_options:
+                default_grid = fallback
+            await state.clear()
+            await state.set_state(EmojiStates.waiting_for_grid)
+            await state.update_data(
+                image_bytes=image_bytes,
+                image_hash=image_hash,
+                file_unique_id=file.file_unique_id,
+                suggested=[option.encode() for option in plan_options],
+                default_padding=settings.default_padding,
+                default_grid=default_grid.encode(),
+                image_extension=extension,
+            )
 
-        warn_text = (
-            "⚠️ Для установки кастом-эмодзи паков нужен Telegram Premium.\n"
-            f"Файлы удаляются через {retention_minutes} мин после обработки."
-        )
-        description = (
-            f"Изображение {width}×{height}px.\nВыберите сетку для нарезки (по умолчанию {default_grid.as_label()})."
-        )
-        await message.answer(
-            f"{warn_text}\n\n{description}",
-            reply_markup=_grid_keyboard(plan_options, default_grid),
-        )
+            warn_text = (
+                "⚠️ Для установки кастом-эмодзи паков нужен Telegram Premium.\n"
+                f"Файлы удаляются через {retention_minutes} мин после обработки."
+            )
+            description = (
+                f"Изображение {width}×{height}px.\nВыберите сетку для нарезки (по умолчанию {default_grid.as_label()})."
+            )
+            await message.answer(
+                f"{warn_text}\n\n{description}",
+                reply_markup=_grid_keyboard(plan_options, default_grid),
+            )
+            await usage_stats.record_event(message.from_user)
+        finally:
+            await anti_spam.release(user_id)
 
     @router.callback_query(EmojiStates.waiting_for_grid, F.data.startswith("grid:"))
     async def choose_grid(callback: CallbackQuery, state: FSMContext) -> None:
@@ -198,7 +200,11 @@ def create_emoji_router(
 
         await user_settings.update(callback.from_user.id, grid, padding)
 
-        future = await queue.submit(request)
+        try:
+            future = await queue.submit(request)
+        except Exception:
+            await anti_spam.release(callback.from_user.id)
+            raise
         await callback.answer("Запустил нарезку, это займет до минуты")
         processing_message = await callback.message.answer(
             "Нарезаю и загружаю эмодзи… сообщу, когда всё готово.",

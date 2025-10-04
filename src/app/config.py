@@ -24,6 +24,12 @@ class AppConfig(BaseSettings):
     emoji_max_tiles: int = Field(200, ge=1, alias="EMOJI_MAX_TILES")
     emoji_creation_limit: int = Field(50, ge=1, alias="EMOJI_CREATION_LIMIT")
     emoji_tile_size: int = Field(100, ge=64, le=512, alias="EMOJI_TILE_SIZE")
+    emoji_grid_tile_cap: int | None = Field(
+        None,
+        ge=1,
+        alias="EMOJI_GRID_TILE_CAP",
+        description="Максимальное количество тайлов в опциях сетки (если указано)",
+    )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field("INFO", alias="LOG_LEVEL")
 

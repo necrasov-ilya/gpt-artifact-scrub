@@ -10,6 +10,14 @@ import aiosqlite
 from ..domain.models import EmojiJobOutcome, EmojiPackRequest, EmojiPackResult, EmojiGridOption, UserSettings
 
 
+@dataclass(frozen=True)
+class UsageStatRow:
+    user_id: int
+    username: str | None
+    display_name: str | None
+    total_count: int
+
+
 @dataclass
 class Storage:
     path: Path
@@ -39,6 +47,18 @@ class Storage:
                     fragment_preview_id TEXT,
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (user_id, image_hash, grid, padding)
+                )
+                """
+            )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS usage_stats (
+                    user_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    display_name TEXT,
+                    total_count INTEGER NOT NULL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL
                 )
                 """
             )
@@ -127,3 +147,74 @@ class Storage:
                 ),
             )
             await db.commit()
+
+    async def increment_usage(
+        self,
+        *,
+        user_id: int,
+        username: str | None,
+        display_name: str | None,
+    ) -> None:
+        normalized_username = (username or "").strip() or None
+        normalized_display = (display_name or "").strip() or None
+        now = datetime.now(UTC).isoformat()
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                """
+                INSERT INTO usage_stats (user_id, username, display_name, total_count, first_seen, last_seen)
+                VALUES (?, ?, ?, 1, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    total_count = usage_stats.total_count + 1,
+                    username = CASE
+                        WHEN excluded.username IS NOT NULL AND excluded.username != '' THEN excluded.username
+                        ELSE usage_stats.username
+                    END,
+                    display_name = CASE
+                        WHEN excluded.display_name IS NOT NULL AND excluded.display_name != '' THEN excluded.display_name
+                        ELSE usage_stats.display_name
+                    END,
+                    last_seen = excluded.last_seen
+                """,
+                (
+                    user_id,
+                    normalized_username,
+                    normalized_display,
+                    now,
+                    now,
+                ),
+            )
+            await db.commit()
+
+    async def get_usage_stats(self, *, offset: int, limit: int) -> tuple[list[UsageStatRow], int, int]:
+        async with aiosqlite.connect(self.path) as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id, username, display_name, total_count
+                FROM usage_stats
+                ORDER BY total_count DESC, last_seen DESC
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            )
+            rows = await cursor.fetchall()
+            await cursor.close()
+            cursor = await db.execute(
+                """
+                SELECT COUNT(*), COALESCE(SUM(total_count), 0)
+                FROM usage_stats
+                """
+            )
+            totals_row = await cursor.fetchone()
+            await cursor.close()
+        entries = [
+            UsageStatRow(
+                user_id=int(row[0]),
+                username=row[1],
+                display_name=row[2],
+                total_count=int(row[3]),
+            )
+            for row in rows
+        ]
+        total_users = int(totals_row[0]) if totals_row and totals_row[0] is not None else 0
+        total_events = int(totals_row[1]) if totals_row and totals_row[1] is not None else 0
+        return entries, total_users, total_events
