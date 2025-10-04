@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from aiogram.filters.command import CommandObject
 
-from src.app.handlers.commands import _get_command_args, _parse_key_value_args
+import pytest
+
+from src.app.handlers.commands import _get_command_args, _is_logs_whitelisted, _parse_key_value_args
 
 
 def test_get_command_args_handles_none() -> None:
@@ -24,3 +26,16 @@ def test_parse_key_value_args_skips_invalid_tokens() -> None:
     args = "invalid grid=2x2 noequals pad=1"
     parsed = _parse_key_value_args(args)
     assert parsed == {"grid": "2x2", "pad": "1"}
+
+
+@pytest.mark.parametrize(
+    "whitelist,user_id,expected",
+    [
+        (frozenset(), 123, False),
+        (frozenset({123}), 123, True),
+        (frozenset({123}), 456, False),
+        (frozenset({123}), None, False),
+    ],
+)
+def test_is_logs_whitelisted(whitelist: frozenset[int], user_id: int | None, expected: bool) -> None:
+    assert _is_logs_whitelisted(user_id, whitelist) is expected

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
+
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +34,26 @@ class AppConfig(BaseSettings):
     )
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field("INFO", alias="LOG_LEVEL")
+    logs_page_size: int = Field(20, ge=1, alias="LOGS_PAGE_SIZE")
+
+    # Keep the raw env value as a string to avoid dotenv provider attempting JSON decode
+    logs_whitelist_ids_raw: Optional[str] = Field(None, alias="LOGS_WHITELIST_IDS")
+
+    @property
+    def logs_whitelist_ids(self) -> set[int]:
+        raw = self.logs_whitelist_ids_raw
+        if raw is None or raw == "":
+            return set()
+        # Support comma/space/semicolon separation
+        tokens = [token for token in re.split(r"[\s,;]+", raw.strip()) if token]
+        ids: set[int] = set()
+        for token in tokens:
+            try:
+                ids.add(int(token))
+            except ValueError:
+                # ignore non-integer tokens
+                continue
+        return ids
 
     def ensure_dirs(self) -> None:
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)

@@ -47,7 +47,7 @@ class AppContainer:
         default_grid = EmojiGridOption.decode(config.emoji_grid_default.replace("×", "x"))
         grid_limit = min(config.emoji_max_tiles, config.emoji_creation_limit)
         anti_spam = AntiSpamGuard()
-        usage_stats = UsageStatsService(storage)
+        usage_stats = UsageStatsService(storage, page_size=config.logs_page_size)
         user_settings = UserSettingsService(
             storage,
             default_grid=default_grid,
@@ -90,7 +90,13 @@ class AppContainer:
             workers=self.config.emoji_queue_workers,
         )
         dispatcher = Dispatcher()
-        dispatcher.include_router(create_commands_router(self.user_settings, self.usage_stats))
+        dispatcher.include_router(
+            create_commands_router(
+                self.user_settings,
+                self.usage_stats,
+                logs_whitelist_ids=self.config.logs_whitelist_ids,
+            )
+        )
         dispatcher.include_router(create_text_router(self.text_service, self.anti_spam, self.usage_stats))
         dispatcher.include_router(
             create_emoji_router(
