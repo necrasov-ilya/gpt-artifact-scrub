@@ -174,16 +174,6 @@ def create_emoji_router(
 
         await user_settings.update(callback.from_user.id, grid, padding)
 
-        cached = await storage.get_cached_job(request)
-        if cached:
-            await callback.answer("Этот набор уже готов — отправляю ссылку")
-            try:
-                path.unlink(missing_ok=True)
-            except Exception:
-                pass
-            await _send_result(callback.message, cached.result, fragment_username)
-            return
-
         future = await queue.submit(request)
         await callback.answer("Запустил нарезку, это займет до минуты")
         processing_message = await callback.message.answer(

@@ -14,10 +14,6 @@ class AppConfig(BaseSettings):
     bot_username: Optional[str] = Field(None, alias="TELEGRAM_BOT_USERNAME")
     fragment_username: Optional[str] = Field(None, alias="FRAGMENT_USERNAME")
 
-    openai_api_key: Optional[str] = Field(None, alias="OPENAI_API_KEY")
-    openai_model: str = Field("gpt-4o-mini", alias="OPENAI_MODEL")
-    openai_temperature: float = Field(0.2, ge=0.0, le=1.0, alias="OPENAI_TEMPERATURE")
-
     storage_path: Path = Field(Path("./data/state.db"), alias="STORAGE_PATH")
     temp_dir: Path = Field(Path("./data/tmp"), alias="TMP_DIR")
     temp_retention_minutes: int = Field(15, ge=1, le=120, alias="TMP_RETENTION_MINUTES")

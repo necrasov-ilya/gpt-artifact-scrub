@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from ..pipeline.normalization import normalize_text
-
-from ..domain.models import TextCorrectionResult
+from ...modules.text.pipeline.normalization import normalize_text
+from ...modules.text.domain.models import TextCorrectionResult
 
 
 class TextNormalizationService:
     async def process(self, text: str) -> TextCorrectionResult:
         normalized_text, stats = normalize_text(text)
-        has_changes = any(value for value in stats.values())
-        if has_changes:
+        if any(stats.values()):
             summary = "Подчистил форматирование и маркеры — смысл уже был в порядке."
         else:
             summary = "Без заметных правок — текст уже аккуратный."

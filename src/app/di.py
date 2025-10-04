@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from openai import AsyncOpenAI
 
 from .config import AppConfig
 from ..modules.images.domain.models import EmojiGridOption
@@ -19,8 +18,7 @@ from ..modules.images.infrastructure.tempfiles import TempFileManager
 from ..modules.images.services.emoji_pack import EmojiPackService
 from ..modules.images.services.queue import EmojiProcessingQueue
 from ..modules.images.services.user_settings import UserSettingsService
-from ..modules.text.infrastructure.llm_openai import OpenAITextEditor
-from ..modules.text.services.normalization import IdentityTextEditor, TextNormalizationService
+from ..modules.text.services.normalization import TextNormalizationService
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AppContainer:
     config: AppConfig
-    openai_client: AsyncOpenAI | None
     storage: Storage
     temp_files: TempFileManager
     text_service: TextNormalizationService
@@ -39,11 +36,6 @@ class AppContainer:
 
     @classmethod
     async def build(cls, config: AppConfig) -> "AppContainer":
-        openai_client: AsyncOpenAI | None = None
-        if config.openai_api_key:
-            openai_client = AsyncOpenAI(api_key=config.openai_api_key)
-        else:
-            logger.warning("OPENAI_API_KEY not set; falling back to normalization-only editor")
         storage = Storage(config.storage_path)
         await storage.initialize()
         temp_files = TempFileManager(config.temp_dir, retention_minutes=config.temp_retention_minutes)
@@ -56,18 +48,9 @@ class AppContainer:
             default_padding=config.emoji_padding_default,
             grid_limit=grid_limit,
         )
-        if openai_client is None:
-            llm_editor = IdentityTextEditor()
-        else:
-            llm_editor = OpenAITextEditor(
-                client=openai_client,
-                model=config.openai_model,
-                temperature=config.openai_temperature,
-            )
-        text_service = TextNormalizationService(llm_editor)
+        text_service = TextNormalizationService()
         return cls(
             config=config,
-            openai_client=openai_client,
             storage=storage,
             temp_files=temp_files,
             text_service=text_service,
@@ -126,5 +109,3 @@ class AppContainer:
         if self.emoji_queue:
             await self.emoji_queue.stop()
         await self.temp_files.stop()
-        if self.openai_client is not None:
-            await self.openai_client.close()

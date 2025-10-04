@@ -26,10 +26,6 @@ class EmojiPackService:
         self._tile_size = tile_size
 
     async def process(self, request: EmojiPackRequest) -> EmojiJobOutcome:
-        cached = await self._storage.get_cached_job(request)
-        if cached:
-            return cached
-
         async with aiofiles.open(request.file_path, "rb") as f:
             data = await f.read()
 

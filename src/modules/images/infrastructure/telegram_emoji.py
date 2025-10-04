@@ -31,10 +31,13 @@ class TelegramEmojiClient:
 
     def _build_short_name(self, request: EmojiPackRequest, username: str) -> str:
         suffix = f"_by_{username}".lower()
-        # Keep enough entropy while ensuring a unique set per grid/padding combination.
+        timestamp = request.requested_at.strftime("%Y%m%d%H%M%S%f")
+        file_marker = re.sub(r"[^a-z0-9]", "", request.file_path.stem.lower())[:6]
+        unique_marker = re.sub(r"[^a-z0-9]", "", request.file_unique_id.lower())[:6]
+        entropy = file_marker or unique_marker or "file"
         base = (
-            f"emoji_{request.user_id}_{request.image_hash[:4]}_"
-            f"{request.grid.rows}x{request.grid.cols}_p{request.padding}"
+            f"emoji_{request.user_id}_{timestamp}_{request.grid.rows}x{request.grid.cols}_"
+            f"p{request.padding}_{entropy}"
         ).lower()
         sanitized = re.sub(r"[^a-z0-9_]", "_", base)
         max_base_len = 64 - len(suffix)
