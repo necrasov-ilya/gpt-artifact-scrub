@@ -69,10 +69,11 @@ class TelegramEmojiClient:
             raise ValueError("Too many tiles requested for a single run")
         username = await self._ensure_bot_username()
         short_name = self._build_short_name(request, username)
-        title = (
-            f"Emoji pack {request.grid.rows}x{request.grid.cols}"
-            f" (pad {request.padding}) by {request.user_id}"
-        )
+        # title = (
+        #     f"Emoji pack {request.grid.rows}x{request.grid.cols}"
+        #     f" (pad {request.padding}) by {request.user_id}"
+        # )
+        title = "Created By @Imnotai_bot"
 
         fs_inputs = [p if isinstance(p, FSInputFile) else FSInputFile(p) for p in tile_paths]
         file_ids = await self._upload_tiles(request.user_id, fs_inputs)
