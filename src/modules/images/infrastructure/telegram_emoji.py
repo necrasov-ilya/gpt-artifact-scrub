@@ -73,7 +73,7 @@ class TelegramEmojiClient:
         #     f"Emoji pack {request.grid.rows}x{request.grid.cols}"
         #     f" (pad {request.padding}) by {request.user_id}"
         # )
-        title = "Created By @Imnotai_bot"
+        title = f"Created By @{username}"
 
         fs_inputs = [p if isinstance(p, FSInputFile) else FSInputFile(p) for p in tile_paths]
         file_ids = await self._upload_tiles(request.user_id, fs_inputs)
