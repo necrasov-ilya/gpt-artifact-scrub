@@ -141,7 +141,7 @@ def create_emoji_router(
             )
 
             warn_text = (
-                "⚠️ Для установки кастом-эмодзи паков нужен Telegram Premium.\n"
+                "⚠️ Для установки кастом-эмодзи паков нужен Telegram Premium.\n\n"
                 f"Файлы удаляются через {retention_minutes} мин после обработки."
             )
             description = (

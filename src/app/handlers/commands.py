@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
@@ -63,6 +63,10 @@ def create_commands_router(
 
     @router.message(Command("help"))
     async def help_cmd(message: Message) -> None:
+        await message.answer(HELP_TEXT)
+
+    @router.message(F.text == "ℹ️ Помощь")
+    async def help_text(message: Message) -> None:
         await message.answer(HELP_TEXT)
 
     @router.message(Command("settings"))
