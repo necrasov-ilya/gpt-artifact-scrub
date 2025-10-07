@@ -78,11 +78,26 @@ def create_commands_router(
         current_level = settings.default_padding
         current_px = padding_level_to_pixels(current_level, tile_size)
         if not args:
+            levels = []
+            for level in range(0, 6):
+                px = padding_level_to_pixels(level, tile_size)
+                desc = (
+                    "нет рамки" if level == 0 else
+                    "очень тонкая" if level == 1 else
+                    "умеренная" if level == 2 else
+                    "заметная" if level == 3 else
+                    "широкая" if level == 4 else
+                    "максимальная"
+                )
+                levels.append(f"{level} — {desc} (~{px}px)")
+
             await message.answer(
                 "Текущий padding:\n"
                 f"• Уровень: {current_level}\n"
                 f"• Отступ по краям: ≈{current_px}px\n\n"
-                "Чтобы изменить, укажите padding=0..5: /padding padding=3",
+                "Доступные уровни:\n"
+                + "\n".join(levels)
+                + "\n\nЧтобы изменить, укажите padding=0..5: /padding padding=3",
             )
             return
         parts = _parse_key_value_args(args)
