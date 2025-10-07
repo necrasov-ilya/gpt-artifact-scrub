@@ -94,6 +94,7 @@ class AppContainer:
             create_commands_router(
                 self.user_settings,
                 self.usage_stats,
+                tile_size=self.config.emoji_tile_size,
                 logs_whitelist_ids=self.config.logs_whitelist_ids,
             )
         )

@@ -4,14 +4,14 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from ...modules.images.domain.models import EmojiGridOption
 from ...modules.images.services.user_settings import UserSettingsService
 from ...modules.shared.services.usage_stats import UsageStatsService
+from ...modules.images.utils.image import padding_level_to_pixels
 
 START_TEXT = (
     "🤖 Работаю с текстами и картинками. Просто отправьте — я верну готовый результат.\n\n"
     "📝 Если текст: убираю признаки ИИ — длинные тире меняю на \"-\", кавычки на \"\", списки на \"-\", удаляю артефакты от GPT вроде [cite], (turn0search1) и т.п.\n\n"
-    "🖼️ Если фото: оцениваю размеры, предлагаю сетку, прошу выбрать padding (0–5 px). Тайлы конвертирую в PNG 100×100 и собираю новый кастом-пак. Для загрузки пака у вас на аккаунте должна быть подписка Telegram Premium.\n\n"
+    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру их из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Уровень отступа можно изменить командой /padding — например, /padding 0.\n\n"
     "🔒 Ваши сообщения сохраняются в наших системах для последующего анализа, направленного на повышение эффективности и качества предоставляемых услуг\n\n"
     "💬 Тех. поддержка — @mentsev"
 )
@@ -19,7 +19,7 @@ START_TEXT = (
 HELP_TEXT = (
     "🤖 Работаю с текстами и картинками. Просто отправьте — я верну готовый результат.\n\n"
     "📝 Если текст: убираю признаки ИИ — длинные тире меняю на \"-\", кавычки на \"\", списки на \"-\", удаляю артефакты от GPT вроде [cite], (turn0search1) и т.п.\n\n"
-    "🖼️ Если фото: оцениваю размеры, предлагаю сетку, прошу выбрать padding (0–5 px). Тайлы конвертирую в PNG 100×100 и собираю новый кастом-пак. Для загрузки пака у вас на аккаунте должна быть подписка Telegram Premium.\n\n"
+    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру их из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Уровень отступа можно изменить командой /padding — например, /padding 0.\n\n"
     "🔒 Ваши сообщения сохраняются в наших системах для последующего анализа, направленного на повышение эффективности и качества предоставляемых услуг\n\n"
     "💬 Тех. поддержка — @mentsev"
 )
@@ -29,15 +29,6 @@ def _get_command_args(command: CommandObject | None) -> str:
     if command is None or not command.args:
         return ""
     return command.args.strip()
-
-
-def _parse_key_value_args(args: str) -> dict[str, str]:
-    parts: dict[str, str] = {}
-    for token in args.split():
-        if "=" in token:
-            key, value = token.split("=", 1)
-            parts[key.lower()] = value
-    return parts
 
 
 def _is_logs_whitelisted(user_id: int | None, whitelist: frozenset[int]) -> bool:
@@ -52,6 +43,8 @@ def _is_logs_whitelisted(user_id: int | None, whitelist: frozenset[int]) -> bool
 def create_commands_router(
     user_settings: UserSettingsService,
     usage_stats: UsageStatsService,
+    *,
+    tile_size: int,
     logs_whitelist_ids: set[int] | None = None,
 ) -> Router:
     router = Router(name="commands")
@@ -69,61 +62,38 @@ def create_commands_router(
     async def help_text(message: Message) -> None:
         await message.answer(HELP_TEXT)
 
-    @router.message(Command("settings"))
-    async def settings_cmd(message: Message, command: CommandObject) -> None:
+    @router.message(Command("padding"))
+    async def padding_cmd(message: Message, command: CommandObject) -> None:
         user_id = message.from_user.id
         args = _get_command_args(command)
+        settings = await user_settings.get(user_id)
+        current_level = settings.default_padding
+        current_px = padding_level_to_pixels(current_level, tile_size)
         if not args:
-            settings = await user_settings.get(user_id)
             await message.answer(
-                "Текущие настройки:\n"
-                f"• Сетка: {settings.default_grid.as_label()}\n"
-                f"• Padding: {settings.default_padding}px\n\n"
-                "Чтобы изменить: /settings grid=3x3 pad=2",
+                "Текущий padding:\n"
+                f"• Уровень: {current_level}\n"
+                f"• Отступ по краям: ≈{current_px}px\n\n"
+                "Чтобы изменить, укажите целое число 0–5: /padding 3",
             )
             return
-        parts = _parse_key_value_args(args)
-        errors = []
-        grid_value = parts.get("grid")
-        pad_value = parts.get("pad")
-        if not grid_value and not pad_value:
-            errors.append("Укажите хотя бы один параметр: grid=RxC или pad=N")
-        new_grid = None
-        if grid_value:
-            try:
-                new_grid = EmojiGridOption.decode(grid_value)
-                if new_grid.tiles > user_settings.grid_limit:
-                    raise ValueError
-            except Exception:
-                errors.append(
-                    f"Сетка должна быть в формате 2x2, 3x4 и т.д. и содержать не более {user_settings.grid_limit} тайлов."
-                )
-        padding = None
-        if pad_value:
-            try:
-                padding_int = int(pad_value)
-                if not 0 <= padding_int <= 5:
-                    raise ValueError
-                padding = padding_int
-            except Exception:
-                errors.append("Padding укажите как целое число 0–5")
-        if errors:
-            await message.answer("\n".join(errors))
-            return
-        current = await user_settings.get(user_id)
-        updated_grid = new_grid or current.default_grid
-        updated_padding = padding if padding is not None else current.default_padding
         try:
-            await user_settings.update(user_id, updated_grid, updated_padding)
+            new_level = int(args.split()[0])
         except ValueError:
-            await message.answer(
-                f"Сетка с {updated_grid.tiles} тайлами превышает лимит {user_settings.grid_limit}. Выберите меньший вариант."
-            )
+            await message.answer("Передайте число от 0 до 5: /padding 2")
             return
+        if not 0 <= new_level <= 5:
+            await message.answer("Выберите целое число от 0 до 5.")
+            return
+        if new_level == current_level:
+            await message.answer("Padding уже установлен на это значение.")
+            return
+        await user_settings.update(user_id, settings.default_grid, new_level)
+        new_px = padding_level_to_pixels(new_level, tile_size)
         await message.answer(
-            "Готово! Настройки обновлены:\n"
-            f"• Сетка: {updated_grid.as_label()}\n"
-            f"• Padding: {updated_padding}px"
+            "Готово! Padding обновлён:\n"
+            f"• Уровень: {new_level}\n"
+            f"• Отступ по краям: ≈{new_px}px"
         )
 
     @router.message(Command("logs"))
@@ -147,7 +117,7 @@ def create_commands_router(
             await message.answer("Пока никто не пользовался ботом — статистика появится, когда придут первые запросы.")
             return
 
-        lines = ["📊 Статистика пользователей", f"Всего: {stats_page.total_events}"]
+        lines = ["📊 Статистика пользователей", f"Всего пользователей: {stats_page.total_users}"]
         start_rank = (stats_page.page - 1) * usage_stats.page_size + 1
         for index, entry in enumerate(stats_page.entries, start=start_rank):
             lines.append(f"{index}. {entry.label} — {entry.total_count}")

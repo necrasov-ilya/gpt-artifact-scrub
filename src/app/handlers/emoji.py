@@ -25,7 +25,6 @@ from ...modules.shared.services.usage_stats import UsageStatsService
 
 class EmojiStates(StatesGroup):
     waiting_for_grid = State()
-    waiting_for_padding = State()
 
 
 def _grid_keyboard(options: Iterable[EmojiGridOption], default: EmojiGridOption) -> InlineKeyboardMarkup:
@@ -42,14 +41,6 @@ def _grid_keyboard(options: Iterable[EmojiGridOption], default: EmojiGridOption)
     if row:
         buttons.append(row)
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-def _padding_keyboard(default: int) -> InlineKeyboardMarkup:
-    row = [
-        InlineKeyboardButton(text=f"{pad}{' ⭐' if pad == default else ''}", callback_data=f"pad:{pad}")
-        for pad in range(0, 6)
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
 async def _resolve_extension(bot, file) -> str:
@@ -147,8 +138,12 @@ def create_emoji_router(
             description = (
                 f"Изображение {width}×{height}px.\nВыберите сетку для нарезки (по умолчанию {default_grid.as_label()})."
             )
+            padding_hint = (
+                "\n\nТекущий padding-уровень: "
+                f"{settings.default_padding}. Изменить можно командой /padding 0..5."
+            )
             await message.answer(
-                f"{warn_text}\n\n{description}",
+                f"{warn_text}\n\n{description}{padding_hint}",
                 reply_markup=_grid_keyboard(plan_options, default_grid),
             )
             await usage_stats.record_event(message.from_user)
@@ -164,25 +159,9 @@ def create_emoji_router(
         if grid.encode() not in suggested:
             await callback.answer("Эта сетка недоступна для этого изображения", show_alert=True)
             return
-        await state.update_data(selected_grid=grid.encode())
-        default_padding = int(stored.get("default_padding", 2))
-        await state.set_state(EmojiStates.waiting_for_padding)
-        await callback.message.edit_text(
-            "Сетка выбрана. Padding — это прозрачная рамка вокруг эмодзи, чтобы изображение не упиралось в края.\nВыберите значение от 0 до 5 пикселей.",
-            reply_markup=_padding_keyboard(default_padding),
-        )
-        await callback.answer()
-
-    @router.callback_query(EmojiStates.waiting_for_padding, F.data.startswith("pad:"))
-    async def choose_padding(callback: CallbackQuery, state: FSMContext) -> None:
-        padding = int(callback.data.split(":", 1)[1])
-        data = await state.get_data()
-        selected_encoded = data.get("selected_grid")
-        if not selected_encoded:
-            await callback.answer("Сначала выберите сетку", show_alert=True)
-            return
+        data = {**stored}
         await state.clear()
-        grid = EmojiGridOption.decode(selected_encoded)
+        default_padding = int(data.get("default_padding", 2))
         image_bytes: bytes = data["image_bytes"]
         image_hash: str = data["image_hash"]
         file_unique_id: str = data["file_unique_id"]
@@ -196,12 +175,12 @@ def create_emoji_router(
             file_path=path,
             image_hash=image_hash,
             grid=grid,
-            padding=padding,
+            padding=default_padding,
             file_unique_id=file_unique_id,
             requested_at=datetime.now(UTC),
         )
 
-        await user_settings.update(callback.from_user.id, grid, padding)
+        await user_settings.update(callback.from_user.id, grid, default_padding)
 
         try:
             future = await queue.submit(request)
@@ -210,7 +189,7 @@ def create_emoji_router(
             raise
         await callback.answer("Запустил нарезку, это займет до минуты")
         processing_message = await callback.message.answer(
-            "Нарезаю и загружаю эмодзи… сообщу, когда всё готово.",
+            "Режу ваше фото на миниатюры и превращаю их в эмодзи — скоро пришлю ссылку!",
         )
 
         async def finalize() -> None:

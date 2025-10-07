@@ -10,6 +10,13 @@ from PIL import Image
 from ..domain.models import EmojiGridOption, SuggestedGridPlan
 
 
+def padding_level_to_pixels(level: int, tile_size: int) -> int:
+    level = max(0, level)
+    step = max(2, tile_size // 16)
+    pixels = level * step
+    return min(tile_size // 2, pixels)
+
+
 def compute_image_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -63,14 +70,12 @@ def slice_into_tiles(
     temp_dir: Path,
     prefix: str,
 ) -> list[Path]:
-    padding = max(0, min(padding, tile_size // 4))
+    padding_px = padding_level_to_pixels(padding, tile_size)
     with Image.open(io.BytesIO(image_bytes)) as source:
         rgba = source.convert("RGBA")
         width, height = rgba.size
         x_edges = _split_edges(width, grid.cols)
         y_edges = _split_edges(height, grid.rows)
-        target_size = tile_size - padding * 2
-        target_size = max(1, target_size)
         paths: list[Path] = []
         for row in range(grid.rows):
             for col in range(grid.cols):
@@ -79,10 +84,15 @@ def slice_into_tiles(
                 right = x_edges[col + 1]
                 lower = y_edges[row + 1]
                 cropped = rgba.crop((left, upper, right, lower))
-                resized = cropped.resize((target_size, target_size), Image.LANCZOS)
+                left_pad = padding_px if col == 0 else 0
+                right_pad = padding_px if col == grid.cols - 1 else 0
+                top_pad = padding_px if row == 0 else 0
+                bottom_pad = padding_px if row == grid.rows - 1 else 0
+                target_width = max(1, tile_size - left_pad - right_pad)
+                target_height = max(1, tile_size - top_pad - bottom_pad)
+                resized = cropped.resize((target_width, target_height), Image.LANCZOS)
                 canvas = Image.new("RGBA", (tile_size, tile_size), (0, 0, 0, 0))
-                offset = ((tile_size - target_size) // 2, (tile_size - target_size) // 2)
-                canvas.paste(resized, offset, mask=resized)
+                canvas.paste(resized, (left_pad, top_pad), mask=resized)
                 filename = f"{prefix}_{row}_{col}.png"
                 path = temp_dir / filename
                 canvas.save(path, format="PNG")
