@@ -140,7 +140,7 @@ def create_commands_router(
         lines = [
             "📊 Статистика пользователей",
             f"Всего пользователей: {stats_page.total_users}",
-            f"Всего событий: {stats_page.total_events}",
+            f"Всего сообщений: {stats_page.total_events}",
         ]
         start_rank = (stats_page.page - 1) * usage_stats.page_size + 1
         for index, entry in enumerate(stats_page.entries, start=start_rank):
