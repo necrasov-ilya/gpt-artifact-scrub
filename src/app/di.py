@@ -95,6 +95,7 @@ class AppContainer:
                 self.user_settings,
                 self.usage_stats,
                 tile_size=self.config.emoji_tile_size,
+                default_padding=self.config.emoji_padding_default,
                 admin_user_ids=self.config.admin_user_ids,
             )
         )
