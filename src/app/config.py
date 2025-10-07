@@ -37,11 +37,11 @@ class AppConfig(BaseSettings):
     logs_page_size: int = Field(20, ge=1, alias="LOGS_PAGE_SIZE")
 
     # Keep the raw env value as a string to avoid dotenv provider attempting JSON decode
-    logs_whitelist_ids_raw: Optional[str] = Field(None, alias="LOGS_WHITELIST_IDS")
+    admin_user_ids_raw: Optional[str] = Field(None, alias="ADMIN_USER_IDS")
 
     @property
-    def logs_whitelist_ids(self) -> set[int]:
-        raw = self.logs_whitelist_ids_raw
+    def admin_user_ids(self) -> set[int]:
+        raw = self.admin_user_ids_raw
         if raw is None or raw == "":
             return set()
         # Support comma/space/semicolon separation

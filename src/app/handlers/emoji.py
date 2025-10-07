@@ -140,7 +140,7 @@ def create_emoji_router(
             )
             padding_hint = (
                 "\n\nТекущий padding-уровень: "
-                f"{settings.default_padding}. Изменить можно командой /padding 0..5."
+                f"{settings.default_padding}. Изменить можно командой /padding padding=0..5."
             )
             await message.answer(
                 f"{warn_text}\n\n{description}{padding_hint}",
@@ -159,7 +159,7 @@ def create_emoji_router(
         if grid.encode() not in suggested:
             await callback.answer("Эта сетка недоступна для этого изображения", show_alert=True)
             return
-        data = {**stored}
+        data = await state.get_data()
         await state.clear()
         default_padding = int(data.get("default_padding", 2))
         image_bytes: bytes = data["image_bytes"]

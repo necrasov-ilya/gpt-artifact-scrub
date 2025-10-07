@@ -95,7 +95,7 @@ class AppContainer:
                 self.user_settings,
                 self.usage_stats,
                 tile_size=self.config.emoji_tile_size,
-                logs_whitelist_ids=self.config.logs_whitelist_ids,
+                admin_user_ids=self.config.admin_user_ids,
             )
         )
         dispatcher.include_router(create_text_router(self.text_service, self.anti_spam, self.usage_stats))

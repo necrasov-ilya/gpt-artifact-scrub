@@ -5,13 +5,13 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
 from ...modules.images.services.user_settings import UserSettingsService
-from ...modules.shared.services.usage_stats import UsageStatsService
 from ...modules.images.utils.image import padding_level_to_pixels
+from ...modules.shared.services.usage_stats import UsageStatsService
 
 START_TEXT = (
     "🤖 Работаю с текстами и картинками. Просто отправьте — я верну готовый результат.\n\n"
     "📝 Если текст: убираю признаки ИИ — длинные тире меняю на \"-\", кавычки на \"\", списки на \"-\", удаляю артефакты от GPT вроде [cite], (turn0search1) и т.п.\n\n"
-    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру их из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Уровень отступа можно изменить командой /padding — например, /padding 0.\n\n"
+    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Изменить уровень можно командой /padding, например /padding padding=0.\n\n"
     "🔒 Ваши сообщения сохраняются в наших системах для последующего анализа, направленного на повышение эффективности и качества предоставляемых услуг\n\n"
     "💬 Тех. поддержка — @mentsev"
 )
@@ -19,7 +19,7 @@ START_TEXT = (
 HELP_TEXT = (
     "🤖 Работаю с текстами и картинками. Просто отправьте — я верну готовый результат.\n\n"
     "📝 Если текст: убираю признаки ИИ — длинные тире меняю на \"-\", кавычки на \"\", списки на \"-\", удаляю артефакты от GPT вроде [cite], (turn0search1) и т.п.\n\n"
-    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру их из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Уровень отступа можно изменить командой /padding — например, /padding 0.\n\n"
+    "🖼️ Если фото: смотрю на размер изображения, предлагаю удобную сетку и нарезаю картинку. Отступы добавляю только по краям и беру из ваших настроек (по умолчанию уровень 2 — умеренная рамка). Готовый пак загружаю в Telegram (нужен Premium). Изменить уровень можно командой /padding, например /padding padding=0.\n\n"
     "🔒 Ваши сообщения сохраняются в наших системах для последующего анализа, направленного на повышение эффективности и качества предоставляемых услуг\n\n"
     "💬 Тех. поддержка — @mentsev"
 )
@@ -31,13 +31,26 @@ def _get_command_args(command: CommandObject | None) -> str:
     return command.args.strip()
 
 
-def _is_logs_whitelisted(user_id: int | None, whitelist: frozenset[int]) -> bool:
+def _parse_key_value_args(args: str) -> dict[str, str]:
+    parts: dict[str, str] = {}
+    for token in args.split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key:
+            parts[key] = value
+    return parts
+
+
+def _is_logs_admin(user_id: int | None, admins: frozenset[int]) -> bool:
     # Enforce strict whitelist: if whitelist is empty, deny everyone
-    if not whitelist:
+    if not admins:
         return False
     if user_id is None:
         return False
-    return user_id in whitelist
+    return user_id in admins
 
 
 def create_commands_router(
@@ -45,10 +58,10 @@ def create_commands_router(
     usage_stats: UsageStatsService,
     *,
     tile_size: int,
-    logs_whitelist_ids: set[int] | None = None,
+    admin_user_ids: set[int] | None = None,
 ) -> Router:
     router = Router(name="commands")
-    allowed_logs_users = frozenset(logs_whitelist_ids or set())
+    allowed_log_admins = frozenset(admin_user_ids or set())
 
     @router.message(Command("start"))
     async def start(message: Message) -> None:
@@ -74,19 +87,24 @@ def create_commands_router(
                 "Текущий padding:\n"
                 f"• Уровень: {current_level}\n"
                 f"• Отступ по краям: ≈{current_px}px\n\n"
-                "Чтобы изменить, укажите целое число 0–5: /padding 3",
+                "Чтобы изменить, укажите padding=0..5: /padding padding=3",
             )
             return
+        parts = _parse_key_value_args(args)
+        raw_level = parts.get("padding") or parts.get("pad") or parts.get("level")
+        if raw_level is None:
+            await message.answer("Используйте формат /padding padding=2.")
+            return
         try:
-            new_level = int(args.split()[0])
+            new_level = int(raw_level)
         except ValueError:
-            await message.answer("Передайте число от 0 до 5: /padding 2")
+            await message.answer("Padding укажите как целое число от 0 до 5: /padding padding=2")
             return
         if not 0 <= new_level <= 5:
-            await message.answer("Выберите целое число от 0 до 5.")
+            await message.answer("Доступны уровни от 0 до 5.")
             return
         if new_level == current_level:
-            await message.answer("Padding уже установлен на это значение.")
+            await message.answer("Padding уже установлен на этот уровень.")
             return
         await user_settings.update(user_id, settings.default_grid, new_level)
         new_px = padding_level_to_pixels(new_level, tile_size)
@@ -100,7 +118,7 @@ def create_commands_router(
     async def logs_cmd(message: Message, command: CommandObject) -> None:
         user_id = message.from_user.id if message.from_user else None
         # If user is not whitelisted, do nothing (remain silent)
-        if not _is_logs_whitelisted(user_id, allowed_logs_users):
+        if not _is_logs_admin(user_id, allowed_log_admins):
             return
 
         args = _get_command_args(command)
@@ -114,10 +132,16 @@ def create_commands_router(
 
         stats_page = await usage_stats.get_page(page)
         if stats_page.total_users == 0:
-            await message.answer("Пока никто не пользовался ботом — статистика появится, когда придут первые запросы.")
+            await message.answer(
+                "Пока никто не пользовался ботом — статистика появится, когда придут первые запросы."
+            )
             return
 
-        lines = ["📊 Статистика пользователей", f"Всего пользователей: {stats_page.total_users}"]
+        lines = [
+            "📊 Статистика пользователей",
+            f"Всего пользователей: {stats_page.total_users}",
+            f"Всего событий: {stats_page.total_events}",
+        ]
         start_rank = (stats_page.page - 1) * usage_stats.page_size + 1
         for index, entry in enumerate(stats_page.entries, start=start_rank):
             lines.append(f"{index}. {entry.label} — {entry.total_count}")

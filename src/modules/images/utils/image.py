@@ -3,8 +3,6 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
-from typing import List
-
 from PIL import Image
 
 from ..domain.models import EmojiGridOption, SuggestedGridPlan
@@ -12,7 +10,7 @@ from ..domain.models import EmojiGridOption, SuggestedGridPlan
 
 def padding_level_to_pixels(level: int, tile_size: int) -> int:
     level = max(0, level)
-    step = max(2, tile_size // 16)
+    step = max(2, tile_size // 20)
     pixels = level * step
     return min(tile_size // 2, pixels)
 
@@ -24,16 +22,6 @@ def compute_image_hash(data: bytes) -> str:
 def get_image_size(data: bytes) -> tuple[int, int]:
     with Image.open(io.BytesIO(data)) as image:
         return image.width, image.height
-
-
-def _split_edges(length: int, parts: int) -> List[int]:
-    edges = [0]
-    for i in range(1, parts):
-        edges.append(round(i * length / parts))
-    edges.append(length)
-    edges[0] = 0
-    edges[-1] = length
-    return edges
 
 
 def suggest_grids(width: int, height: int, *, max_tiles: int, limit: int = 5) -> SuggestedGridPlan:
@@ -74,27 +62,38 @@ def slice_into_tiles(
     with Image.open(io.BytesIO(image_bytes)) as source:
         rgba = source.convert("RGBA")
         width, height = rgba.size
-        x_edges = _split_edges(width, grid.cols)
-        y_edges = _split_edges(height, grid.rows)
+        if width == 0 or height == 0:
+            return []
+
+        full_width = tile_size * grid.cols
+        full_height = tile_size * grid.rows
+        total_horizontal_padding = padding_px * 2 if grid.cols > 0 else 0
+        total_vertical_padding = padding_px * 2 if grid.rows > 0 else 0
+        available_width = max(1, full_width - total_horizontal_padding)
+        available_height = max(1, full_height - total_vertical_padding)
+
+        scale_x = available_width / width
+        scale_y = available_height / height
+        scale = min(scale_x, scale_y)
+        scaled_width = max(1, int(round(width * scale)))
+        scaled_height = max(1, int(round(height * scale)))
+        scaled_image = rgba.resize((scaled_width, scaled_height), Image.LANCZOS)
+
+        full_canvas = Image.new("RGBA", (full_width, full_height), (0, 0, 0, 0))
+        offset_x = padding_px + max(0, (available_width - scaled_width) // 2)
+        offset_y = padding_px + max(0, (available_height - scaled_height) // 2)
+        full_canvas.paste(scaled_image, (offset_x, offset_y), mask=scaled_image)
+
         paths: list[Path] = []
         for row in range(grid.rows):
             for col in range(grid.cols):
-                left = x_edges[col]
-                upper = y_edges[row]
-                right = x_edges[col + 1]
-                lower = y_edges[row + 1]
-                cropped = rgba.crop((left, upper, right, lower))
-                left_pad = padding_px if col == 0 else 0
-                right_pad = padding_px if col == grid.cols - 1 else 0
-                top_pad = padding_px if row == 0 else 0
-                bottom_pad = padding_px if row == grid.rows - 1 else 0
-                target_width = max(1, tile_size - left_pad - right_pad)
-                target_height = max(1, tile_size - top_pad - bottom_pad)
-                resized = cropped.resize((target_width, target_height), Image.LANCZOS)
-                canvas = Image.new("RGBA", (tile_size, tile_size), (0, 0, 0, 0))
-                canvas.paste(resized, (left_pad, top_pad), mask=resized)
+                left = col * tile_size
+                upper = row * tile_size
+                right = left + tile_size
+                lower = upper + tile_size
+                tile_image = full_canvas.crop((left, upper, right, lower))
                 filename = f"{prefix}_{row}_{col}.png"
                 path = temp_dir / filename
-                canvas.save(path, format="PNG")
+                tile_image.save(path, format="PNG")
                 paths.append(path)
         return paths
