@@ -140,7 +140,7 @@ def create_emoji_router(
             )
             padding_hint = (
                 "\n\nТекущий padding-уровень: "
-                f"{settings.default_padding}. Изменить можно командой /padding padding=0..5."
+                f"{settings.default_padding}. Изменить можно командой /padding 0..5."
             )
             await message.answer(
                 f"{warn_text}\n\n{description}{padding_hint}",
