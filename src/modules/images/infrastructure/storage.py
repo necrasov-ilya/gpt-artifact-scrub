@@ -70,8 +70,21 @@ class Storage:
             columns = await cursor.fetchall()
             await cursor.close()
             column_names = {col[1] for col in columns}
+            
             if 'message_count' not in column_names:
+                # Add the new column
                 await db.execute("ALTER TABLE usage_stats ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0")
+                
+                # Initialize message_count with total_count for existing users
+                # This is safe because in the old code, record_event was only called for actual messages (text/images),
+                # not for commands. So total_count ≈ message_count for pre-migration data.
+                # We update only records where message_count is still 0 (just added by ALTER TABLE)
+                cursor = await db.execute("SELECT COUNT(*) FROM usage_stats WHERE message_count = 0")
+                rows_to_update = (await cursor.fetchone())[0]
+                await cursor.close()
+                
+                if rows_to_update > 0:
+                    await db.execute("UPDATE usage_stats SET message_count = total_count WHERE message_count = 0")
             
             await db.commit()
 
