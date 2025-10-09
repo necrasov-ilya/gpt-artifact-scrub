@@ -17,7 +17,6 @@ class LLMArtifactsStage(NormalizationStage):
     TURN_TOKEN_PATTERN = rf"\bturn\d+{_TYPE_PART}\d+\b"
     RE_TURN_TOKEN = re.compile(TURN_TOKEN_PATTERN, re.IGNORECASE)
     RE_TURN_SEQ = re.compile(rf"(?:{TURN_TOKEN_PATTERN})(?:\s+(?:{TURN_TOKEN_PATTERN}))*", re.IGNORECASE)
-    RE_CITE_WORD = re.compile(r"\bcite\b", re.IGNORECASE)
     RE_CITE_PLUS_SEQ = re.compile(rf"\bcite\b(?:\s+{TURN_TOKEN_PATTERN})+", re.IGNORECASE)
 
     def apply(self, context: NormalizationContext) -> None:
@@ -26,22 +25,31 @@ class LLMArtifactsStage(NormalizationStage):
         for key, value in stats.items():
             if key not in context.stats:
                 context.set_stat(key, value)
+        
+        # Remove bracketed groups containing markers
         text = self._remove_bracketed_groups_with_markers(text, stats)
+        
+        # Remove "cite" followed by turn tokens (e.g., "cite turn0search1")
         text, n = self.RE_CITE_PLUS_SEQ.subn("", text)
         if n:
             stats["llm_cite"] += n
+        
+        # Remove standalone turn token sequences
         text, n = self.RE_TURN_SEQ.subn("", text)
         if n:
             stats["llm_tokens"] += n
-        text, n = self.RE_CITE_WORD.subn("", text)
-        if n:
-            stats["llm_cite"] += n
+        
+        # Clean up spacing and punctuation
         text = cleanup_punctuation_and_spaces(text)
+        
+        # Second pass to catch any remaining turn tokens after cleanup
         text = self.RE_TURN_SEQ.sub("", text)
-        text = self.RE_CITE_WORD.sub("", text)
+        
+        # Remove empty brackets and clean up
         text = remove_empty_brackets(text)
         text = cleanup_punctuation_and_spaces(text)
         text = drop_empty_lines_and_list_items(text)
+        
         context.set_text(text)
         for key, value in stats.items():
             if value:
@@ -64,8 +72,9 @@ class LLMArtifactsStage(NormalizationStage):
                     start = top["pos"]
                     end = i
                     inner = s[start + 1 : end]
+                    # Check if inner content has "cite" followed by turn tokens, or just turn tokens
                     has_marker = bool(
-                        LLMArtifactsStage.RE_CITE_WORD.search(inner)
+                        LLMArtifactsStage.RE_CITE_PLUS_SEQ.search(inner)
                         or LLMArtifactsStage.RE_TURN_TOKEN.search(inner)
                         or top["has_marker"]
                     )
