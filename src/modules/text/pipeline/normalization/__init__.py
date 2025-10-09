@@ -8,6 +8,7 @@ from .registry import default_registry, register_stage
 from .stages.final_cleanup import FinalCleanupStage
 from .stages.llm_artifacts import LLMArtifactsStage
 from .stages.preflight import PreflightStatsStage
+from .stages.reference_links import ReferenceLinksStage
 from .stages.typography import TypographyStage
 
 
@@ -17,6 +18,8 @@ def _register_builtin_stages() -> None:
         register_stage(PreflightStatsStage, name=PreflightStatsStage.name)
     if "llm_artifacts" not in names:
         register_stage(LLMArtifactsStage, name=LLMArtifactsStage.name)
+    if "reference_links" not in names:
+        register_stage(ReferenceLinksStage, name=ReferenceLinksStage.name, after="llm_artifacts")
     if "typography" not in names:
         register_stage(TypographyStage, name=TypographyStage.name)
     if "final_cleanup" not in names:

@@ -12,6 +12,7 @@ def format_stats(stats: Mapping[str, int]) -> str:
         "llm_tokens": "маркеры LLM",
         "llm_cite": "cite",
         "llm_bracket_groups": "скобочные группы",
+        "reference_links": "незавершённые ссылки",
     }
     parts = [f"{label}: {stats[key]}" for key, label in mapping.items() if stats.get(key)]
     if not parts:
