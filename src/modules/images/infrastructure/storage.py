@@ -16,6 +16,7 @@ class UsageStatRow:
     username: str | None
     display_name: str | None
     total_count: int
+    message_count: int  # Count of actual processed messages (text/images), excluding commands
 
 
 @dataclass
@@ -57,11 +58,21 @@ class Storage:
                     username TEXT,
                     display_name TEXT,
                     total_count INTEGER NOT NULL,
+                    message_count INTEGER NOT NULL DEFAULT 0,
                     first_seen TEXT NOT NULL,
                     last_seen TEXT NOT NULL
                 )
                 """
             )
+            
+            # Migration: Add message_count column if it doesn't exist
+            cursor = await db.execute("PRAGMA table_info(usage_stats)")
+            columns = await cursor.fetchall()
+            await cursor.close()
+            column_names = {col[1] for col in columns}
+            if 'message_count' not in column_names:
+                await db.execute("ALTER TABLE usage_stats ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0")
+            
             await db.commit()
 
     async def get_user_settings(self, user_id: int) -> UserSettings | None:
@@ -154,6 +165,7 @@ class Storage:
         user_id: int,
         username: str | None,
         display_name: str | None,
+        is_message: bool = False,  # True for actual messages (text/images), False for commands
     ) -> None:
         normalized_username = (username or "").strip() or None
         normalized_display = (display_name or "").strip() or None
@@ -161,10 +173,11 @@ class Storage:
         async with aiosqlite.connect(self.path) as db:
             await db.execute(
                 """
-                INSERT INTO usage_stats (user_id, username, display_name, total_count, first_seen, last_seen)
-                VALUES (?, ?, ?, 1, ?, ?)
+                INSERT INTO usage_stats (user_id, username, display_name, total_count, message_count, first_seen, last_seen)
+                VALUES (?, ?, ?, 1, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     total_count = usage_stats.total_count + 1,
+                    message_count = usage_stats.message_count + ?,
                     username = CASE
                         WHEN excluded.username IS NOT NULL AND excluded.username != '' THEN excluded.username
                         ELSE usage_stats.username
@@ -179,8 +192,10 @@ class Storage:
                     user_id,
                     normalized_username,
                     normalized_display,
+                    1 if is_message else 0,  # Initial message_count
                     now,
                     now,
+                    1 if is_message else 0,  # Increment for message_count
                 ),
             )
             await db.commit()
@@ -189,7 +204,7 @@ class Storage:
         async with aiosqlite.connect(self.path) as db:
             cursor = await db.execute(
                 """
-                SELECT user_id, username, display_name, total_count
+                SELECT user_id, username, display_name, total_count, COALESCE(message_count, 0)
                 FROM usage_stats
                 ORDER BY total_count DESC, last_seen DESC
                 LIMIT ? OFFSET ?
@@ -212,6 +227,7 @@ class Storage:
                 username=row[1],
                 display_name=row[2],
                 total_count=int(row[3]),
+                message_count=int(row[4]),
             )
             for row in rows
         ]

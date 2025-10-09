@@ -146,7 +146,7 @@ def create_emoji_router(
                 f"{warn_text}\n\n{description}{padding_hint}",
                 reply_markup=_grid_keyboard(plan_options, default_grid),
             )
-            await usage_stats.record_event(message.from_user)
+            await usage_stats.record_event(message.from_user, is_message=True)
         finally:
             await anti_spam.release(user_id)
 

@@ -15,6 +15,7 @@ class UsageEntry:
     username: str | None
     display_name: str | None
     total_count: int
+    message_count: int
 
     @property
     def label(self) -> str:
@@ -43,13 +44,22 @@ class UsageStatsService:
     def page_size(self) -> int:
         return self._page_size
 
-    async def record_event(self, user: Optional[User]) -> None:
+    async def record_event(self, user: Optional[User], *, is_message: bool = False) -> None:
+        """
+        Record a user event.
+        
+        Args:
+            user: The Telegram user
+            is_message: True if this is an actual message (text/image) that was processed,
+                       False if this is just a command (like /start)
+        """
         if user is None:
             return
         await self._storage.increment_usage(
             user_id=user.id,
             username=user.username,
             display_name=user.full_name or user.first_name or user.last_name,
+            is_message=is_message,
         )
 
     async def get_page(self, page: int) -> UsagePage:
@@ -68,6 +78,7 @@ class UsageStatsService:
                 username=row.username,
                 display_name=row.display_name,
                 total_count=row.total_count,
+                message_count=row.message_count,
             )
             for row in rows
         ]

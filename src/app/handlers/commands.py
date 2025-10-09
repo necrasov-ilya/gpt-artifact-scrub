@@ -61,6 +61,8 @@ def create_commands_router(
 
     @router.message(Command("start"))
     async def start(message: Message) -> None:
+        # Record the start event so user appears in logs
+        await usage_stats.record_event(message.from_user)
         await message.answer(START_TEXT_TEMPLATE.format(default_padding=default_padding))
 
     @router.message(Command("help"))
@@ -151,7 +153,9 @@ def create_commands_router(
         ]
         start_rank = (stats_page.page - 1) * usage_stats.page_size + 1
         for index, entry in enumerate(stats_page.entries, start=start_rank):
-            lines.append(f"{index}. {entry.label} — {entry.total_count}")
+            msg_count = entry.message_count
+            msg_text = f"{msg_count} сообщений" if msg_count != 0 else "нет сообщений"
+            lines.append(f"{index}. {entry.label} — {msg_text}")
         lines.append("")
         lines.append(f"📄 Страница {stats_page.page} из {stats_page.pages}")
         await message.answer("\n".join(lines))

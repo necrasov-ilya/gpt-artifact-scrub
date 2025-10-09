@@ -33,7 +33,7 @@ def create_text_router(
             await message.answer(formatted, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             stats_text = format_stats(result.stats)
             await message.answer(f"🧹 {stats_text}")
-            await usage_stats.record_event(message.from_user)
+            await usage_stats.record_event(message.from_user, is_message=True)
         finally:
             await guard.release(user_id)
 
