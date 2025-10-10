@@ -3,6 +3,7 @@ Tracking service for link creation and event logging.
 """
 from typing import List, Optional
 
+from src.modules.shared.services.bot_info import BotInfoService
 from src.modules.tracking.domain.interfaces import TrackingRepository
 from src.modules.tracking.domain.models import TrackingLink, TrackingEvent
 from src.modules.tracking.utils.slug_generator import (
@@ -10,15 +11,15 @@ from src.modules.tracking.utils.slug_generator import (
     resolve_slug_collision,
     validate_slug,
 )
-from src.modules.tracking.utils.payload_encoder import generate_start_link
+from src.modules.tracking.utils.payload_encoder import encode_link_id
 
 
 class TrackingService:
     """Service for managing tracking links and events."""
     
-    def __init__(self, repository: TrackingRepository, bot_username: str):
+    def __init__(self, repository: TrackingRepository, bot_info: BotInfoService):
         self._repository = repository
-        self._bot_username = bot_username
+        self._bot_info = bot_info
     
     async def create_tracking_link(
         self,
@@ -58,7 +59,9 @@ class TrackingService:
             slug = resolve_slug_collision(slug, existing_slugs)
         
         link = await self._repository.create_link(tag, slug)
-        url = generate_start_link(self._bot_username, link.link_id)
+        
+        payload = encode_link_id(link.link_id)
+        url = await self._bot_info.get_start_link(payload)
         
         return link, url
     
@@ -145,6 +148,19 @@ class TrackingService:
             True if deleted, False if not found or already deleted
         """
         return await self._repository.soft_delete_link(link_id)
+    
+    async def generate_start_link(self, link_id: int) -> str:
+        """
+        Generate tracking URL for a link.
+        
+        Args:
+            link_id: Link identifier
+        
+        Returns:
+            Full tracking URL
+        """
+        payload = encode_link_id(link_id)
+        return await self._bot_info.get_start_link(payload)
     
     async def _get_all_active_slugs(self) -> set[str]:
         """Get set of all active (non-deleted) slugs."""

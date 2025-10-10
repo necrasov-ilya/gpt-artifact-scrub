@@ -14,7 +14,7 @@ from src.modules.tracking.domain.interfaces import TrackingRepository
 from src.modules.tracking.domain.models import LinkStats, TrackingEvent
 
 
-MetricType = Literal['total', 'unique', 'first_start']
+MetricType = Literal['total', 'unique']
 
 # Default date range: last 30 days
 DEFAULT_DAYS = 30
@@ -102,7 +102,7 @@ class AnalyticsService:
             link_ids: Filter by specific links (None for all active links)
             start_date: Start date (inclusive, UTC), defaults to 30 days ago
             end_date: End date (inclusive, UTC), defaults to today
-            metrics: List of metrics to plot ('total', 'unique', 'first_start')
+            metrics: List of metrics to plot ('total', 'unique')
                     Defaults to ['total', 'unique']
             title: Custom chart title
         
@@ -172,13 +172,11 @@ class AnalyticsService:
             if date_key not in date_aggregates:
                 date_aggregates[date_key] = {
                     'total': 0,
-                    'unique': 0,
-                    'first_start': 0
+                    'unique': 0
                 }
             
             date_aggregates[date_key]['total'] += stat.total_events
             date_aggregates[date_key]['unique'] += stat.unique_users
-            date_aggregates[date_key]['first_start'] += stat.first_starts
         
         current_date = start_date.date()
         end_date_only = end_date.date()
@@ -186,7 +184,6 @@ class AnalyticsService:
         dates = []
         total_values = []
         unique_values = []
-        first_start_values = []
         
         while current_date <= end_date_only:
             dates.append(current_date)
@@ -195,20 +192,17 @@ class AnalyticsService:
                 agg = date_aggregates[current_date]
                 total_values.append(agg['total'])
                 unique_values.append(agg['unique'])
-                first_start_values.append(agg['first_start'])
             else:
                 total_values.append(0)
                 unique_values.append(0)
-                first_start_values.append(0)
             
             current_date += timedelta(days=1)
         
         fig, ax = plt.subplots(figsize=(12, 6))
         
         metric_configs = {
-            'total': ('Total Events', total_values, 'blue'),
-            'unique': ('Unique Users', unique_values, 'green'),
-            'first_start': ('First Starts', first_start_values, 'orange')
+            'total': ('Всего событий', total_values, 'blue'),
+            'unique': ('Уникальных пользователей', unique_values, 'green')
         }
         
         for metric in metrics:
@@ -216,12 +210,12 @@ class AnalyticsService:
                 label, values, color = metric_configs[metric]
                 ax.plot(dates, values, marker='o', label=label, color=color, linewidth=2)
         
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m/%d'))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m'))
         ax.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(dates) // 10)))
         plt.xticks(rotation=45, ha='right')
         
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Count')
+        ax.set_xlabel('Дата')
+        ax.set_ylabel('Количество')
         ax.set_title(title, fontsize=14, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
