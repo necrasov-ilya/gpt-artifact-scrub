@@ -17,6 +17,7 @@ class AppConfig(BaseSettings):
     fragment_username: Optional[str] = Field(None, alias="FRAGMENT_USERNAME")
 
     storage_path: Path = Field(Path("./data/state.db"), alias="STORAGE_PATH")
+    tracking_db_path: Path = Field(Path("./data/tracking.db"), alias="TRACKING_DB_PATH")
     temp_dir: Path = Field(Path("./data/tmp"), alias="TMP_DIR")
     temp_retention_minutes: int = Field(15, ge=1, le=120, alias="TMP_RETENTION_MINUTES")
 
@@ -57,4 +58,5 @@ class AppConfig(BaseSettings):
 
     def ensure_dirs(self) -> None:
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
+        self.tracking_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.temp_dir.mkdir(parents=True, exist_ok=True)

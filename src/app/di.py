@@ -68,7 +68,7 @@ class AppContainer:
         
         bot_info = BotInfoService(bot=bot, config_username=config.bot_username)
         
-        tracking_repository = SQLiteTrackingRepository(config.storage_path)
+        tracking_repository = SQLiteTrackingRepository(config.tracking_db_path)
         await tracking_repository.initialize()
         tracking_service = TrackingService(
             repository=tracking_repository,
