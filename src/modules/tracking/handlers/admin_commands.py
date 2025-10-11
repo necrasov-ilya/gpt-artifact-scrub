@@ -198,7 +198,8 @@ def create_tracking_admin_router(
             # Build header with summary
             lines = [
                 f"📊 <b>Логи: {escape(link.tag)}</b>{period}\n",
-                f"📈 Всего переходов: {total_events}\n",
+                f"📈 Всего переходов: {total_events}",
+                f"👤 Уникальных по ссылке: {unique_users}\n",
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
             ]
             
@@ -363,28 +364,32 @@ def create_tracking_admin_router(
                     return
                 
                 # Get stats for all links
+                all_users = set()
                 all_stats = []
                 for link in links:
                     events = await analytics_service.get_link_events(link_id=link.link_id)
-                    unique_users = len(set(e.tg_user_id for e in events))
+                    link_users = set(e.tg_user_id for e in events)
+                    all_users.update(link_users)
                     
                     all_stats.append({
                         'link': link,
                         'total': len(events),
-                        'unique': unique_users
+                        'unique': len(link_users)
                     })
                 
                 # Sort by total events
                 all_stats.sort(key=lambda x: x['total'], reverse=True)
                 
-                lines = ["📊 <b>Сводка по всем трекинг-ссылкам</b>\n"]
+                total_unique = len(all_users)
+                lines = [f"📊 <b>Сводка по всем трекинг-ссылкам</b>"]
+                lines.append(f"👤 Всего уникальных пользователей: {total_unique}\n")
                 
                 for stat in all_stats:
                     link = stat['link']
                     lines.append(
                         f"🔗 <b>{escape(link.tag)}</b> (#{link.link_id})\n"
                         f"   Slug: {escape(link.slug)}\n"
-                        f"   📈 Всего: {stat['total']}\n"
+                        f"   📈 Переходов: {stat['total']}\n"
                     )
                 
                 lines.append(
@@ -443,7 +448,8 @@ def create_tracking_admin_router(
                     f"📊 <b>Статус: {escape(link.tag)}</b>{period}\n",
                     f"🆔 ID: {link.link_id} | Slug: {escape(link.slug)}",
                     f"🔗 Ссылка: <code>{tracking_url}</code>",
-                    f"📈 Всего переходов: {total_events}\n",
+                    f"📈 Всего переходов: {total_events}",
+                    f"👤 Уникальных по ссылке: {unique_users}\n",
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
                 ]
                 

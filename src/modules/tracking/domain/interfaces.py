@@ -136,6 +136,26 @@ class TrackingRepository(ABC):
         pass
     
     @abstractmethod
+    async def get_all_events(
+        self,
+        link_ids: Optional[List[int]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[TrackingEvent]:
+        """
+        Get all events for multiple links with optional date filtering.
+        
+        Args:
+            link_ids: Filter by specific link IDs (None for all active links)
+            start_date: Start date (inclusive, UTC)
+            end_date: End date (inclusive, UTC)
+            
+        Returns:
+            List of tracking events
+        """
+        pass
+    
+    @abstractmethod
     async def get_aggregated_stats(
         self,
         link_ids: Optional[List[int]] = None,

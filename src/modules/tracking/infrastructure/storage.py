@@ -229,6 +229,44 @@ class SQLiteTrackingRepository(TrackingRepository):
         
         return [self._row_to_event(row) for row in rows]
     
+    async def get_all_events(
+        self,
+        link_ids: Optional[List[int]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[TrackingEvent]:
+        query = """
+            SELECT e.event_id, e.link_id, e.tg_user_id, e.event_type, e.first_start, e.created_at 
+            FROM tracking_events e
+            INNER JOIN tracking_links l ON e.link_id = l.link_id
+            WHERE l.deleted_at IS NULL
+        """
+        params = []
+        
+        if link_ids:
+            placeholders = ','.join('?' * len(link_ids))
+            query += f" AND e.link_id IN ({placeholders})"
+            params.extend(link_ids)
+        
+        if start_date:
+            query += " AND e.created_at >= ?"
+            params.append(start_date.isoformat())
+        
+        if end_date:
+            from datetime import timedelta
+            end_date_inclusive = end_date + timedelta(days=1)
+            query += " AND e.created_at < ?"
+            params.append(end_date_inclusive.isoformat())
+        
+        query += " ORDER BY e.created_at DESC"
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            await cursor.close()
+        
+        return [self._row_to_event(row) for row in rows]
+    
     async def get_aggregated_stats(
         self,
         link_ids: Optional[List[int]] = None,

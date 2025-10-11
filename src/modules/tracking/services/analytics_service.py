@@ -91,11 +91,11 @@ class AnalyticsService:
         if end_date is None:
             end_date = datetime.now(UTC)
         
-        stats = await self.get_aggregated_stats(
+        # Get all events for proper unique user counting
+        events = await self._repository.get_all_events(
             link_ids=link_ids,
             start_date=start_date,
-            end_date=end_date,
-            daily=True
+            end_date=end_date
         )
         
         if not title:
@@ -108,7 +108,7 @@ class AnalyticsService:
                 title = "Analytics: All Links"
         
         return self._create_time_series_chart(
-            stats=stats,
+            events=events,
             metrics=metrics,
             title=title,
             start_date=start_date,
@@ -117,17 +117,17 @@ class AnalyticsService:
     
     def _create_time_series_chart(
         self,
-        stats: List[LinkStats],
+        events: List[TrackingEvent],
         metrics: List[MetricType],
         title: str,
         start_date: datetime,
         end_date: datetime
     ) -> BytesIO:
         """
-        Create time series chart from stats.
+        Create time series chart from events.
         
         Args:
-            stats: List of daily link statistics
+            events: List of tracking events
             metrics: Metrics to plot
             title: Chart title
             start_date: Start date for X-axis
@@ -136,20 +136,19 @@ class AnalyticsService:
         Returns:
             BytesIO buffer with PNG image
         """
+        # Aggregate events by date
         date_aggregates = {}
-        for stat in stats:
-            if stat.date is None:
-                continue
+        for event in events:
+            date_key = event.created_at.date()
             
-            date_key = stat.date.date()
             if date_key not in date_aggregates:
                 date_aggregates[date_key] = {
                     'total': 0,
-                    'unique': 0
+                    'unique_users': set()
                 }
             
-            date_aggregates[date_key]['total'] += stat.total_events
-            date_aggregates[date_key]['unique'] += stat.unique_users
+            date_aggregates[date_key]['total'] += 1
+            date_aggregates[date_key]['unique_users'].add(event.tg_user_id)
         
         current_date = start_date.date()
         end_date_only = end_date.date()
@@ -164,7 +163,7 @@ class AnalyticsService:
             if current_date in date_aggregates:
                 agg = date_aggregates[current_date]
                 total_values.append(agg['total'])
-                unique_values.append(agg['unique'])
+                unique_values.append(len(agg['unique_users']))
             else:
                 total_values.append(0)
                 unique_values.append(0)
