@@ -15,7 +15,6 @@ from src.modules.tracking.utils.payload_encoder import encode_link_id
 
 
 class TrackingService:
-    """Service for managing tracking links and events."""
     
     def __init__(self, repository: TrackingRepository, bot_info: BotInfoService):
         self._repository = repository
@@ -26,19 +25,6 @@ class TrackingService:
         tag: str,
         slug: Optional[str] = None
     ) -> tuple[TrackingLink, str]:
-        """
-        Create a new tracking link.
-        
-        Args:
-            tag: Human-readable label (required)
-            slug: Custom slug (optional, will be auto-generated if not provided)
-        
-        Returns:
-            Tuple of (TrackingLink, full_url)
-        
-        Raises:
-            ValueError: If slug is invalid or tag is empty
-        """
         if not tag or not tag.strip():
             raise ValueError("Tag is required and cannot be empty")
         
@@ -70,16 +56,6 @@ class TrackingService:
         payload: str,
         tg_user_id: int
     ) -> Optional[tuple[TrackingLink, bool]]:
-        """
-        Handle /start command with tracking payload.
-        
-        Args:
-            payload: Encoded payload from /start parameter
-            tg_user_id: Telegram user ID
-        
-        Returns:
-            Tuple of (TrackingLink, is_first_start) or None if invalid payload
-        """
         from src.modules.tracking.utils.payload_encoder import decode_payload
         
         try:
@@ -108,16 +84,6 @@ class TrackingService:
         link_id: int,
         tg_user_id: int
     ) -> TrackingEvent:
-        """
-        Log a visit event (when user clicks the button).
-        
-        Args:
-            link_id: Link identifier
-            tg_user_id: Telegram user ID
-        
-        Returns:
-            Created tracking event
-        """
         return await self._repository.log_event(
             link_id=link_id,
             tg_user_id=tg_user_id,
@@ -126,43 +92,21 @@ class TrackingService:
         )
     
     async def get_link_by_id(self, link_id: int) -> Optional[TrackingLink]:
-        """Get active tracking link by ID."""
         return await self._repository.get_link_by_id(link_id, include_deleted=False)
     
     async def get_link_by_slug(self, slug: str) -> Optional[TrackingLink]:
-        """Get active tracking link by slug."""
         return await self._repository.get_link_by_slug(slug, include_deleted=False)
     
     async def list_links(self, include_deleted: bool = False) -> List[TrackingLink]:
-        """List tracking links."""
         return await self._repository.list_links(include_deleted=include_deleted)
     
     async def delete_link(self, link_id: int) -> bool:
-        """
-        Soft delete a tracking link.
-        
-        Args:
-            link_id: Link identifier
-        
-        Returns:
-            True if deleted, False if not found or already deleted
-        """
         return await self._repository.soft_delete_link(link_id)
     
     async def generate_start_link(self, link_id: int) -> str:
-        """
-        Generate tracking URL for a link.
-        
-        Args:
-            link_id: Link identifier
-        
-        Returns:
-            Full tracking URL
-        """
         payload = encode_link_id(link_id)
         return await self._bot_info.get_start_link(payload)
     
     async def _get_all_active_slugs(self) -> set[str]:
-        """Get set of all active (non-deleted) slugs."""
         links = await self._repository.list_links(include_deleted=False)
         return {link.slug for link in links}

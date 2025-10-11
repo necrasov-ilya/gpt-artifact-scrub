@@ -25,7 +25,7 @@ from ..modules.shared.services.bot_info import BotInfoService
 from ..modules.tracking.infrastructure.storage import SQLiteTrackingRepository
 from ..modules.tracking.services.tracking_service import TrackingService
 from ..modules.tracking.services.analytics_service import AnalyticsService
-from ..modules.tracking.handlers.start_handler import create_start_handler_router
+from ..modules.tracking.handlers.start_handler import create_tracking_middleware
 from ..modules.tracking.handlers.admin_commands import create_tracking_admin_router
 
 logger = logging.getLogger(__name__)
@@ -116,12 +116,7 @@ class AppContainer:
         )
         dispatcher = Dispatcher()
         
-        dispatcher.include_router(
-            create_start_handler_router(
-                tracking_service=self.tracking_service,
-                bot_info=self.bot_info
-            )
-        )
+        dispatcher.message.middleware(create_tracking_middleware(self.tracking_service))
         
         dispatcher.include_router(
             create_tracking_admin_router(

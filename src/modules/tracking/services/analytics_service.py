@@ -6,7 +6,7 @@ from io import BytesIO
 from typing import List, Optional, Literal
 
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for server use
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -15,14 +15,10 @@ from src.modules.tracking.domain.models import LinkStats, TrackingEvent
 
 
 MetricType = Literal['total', 'unique']
-
-# Default date range: last 30 days
 DEFAULT_DAYS = 30
 
 
 class AnalyticsService:
-    """Service for analytics and reporting."""
-    
     def __init__(self, repository: TrackingRepository):
         self._repository = repository
     
@@ -32,17 +28,6 @@ class AnalyticsService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> List[TrackingEvent]:
-        """
-        Get all events for a link with date filtering.
-        
-        Args:
-            link_id: Link identifier
-            start_date: Start date (inclusive, UTC), defaults to 30 days ago
-            end_date: End date (inclusive, UTC), defaults to today
-        
-        Returns:
-            List of tracking events
-        """
         if start_date is None:
             start_date = datetime.now(UTC) - timedelta(days=DEFAULT_DAYS)
         
@@ -62,18 +47,6 @@ class AnalyticsService:
         end_date: Optional[datetime] = None,
         daily: bool = True
     ) -> List[LinkStats]:
-        """
-        Get aggregated statistics.
-        
-        Args:
-            link_ids: Filter by specific links (None for all active links)
-            start_date: Start date (inclusive, UTC), defaults to 30 days ago
-            end_date: End date (inclusive, UTC), defaults to today
-            daily: Whether to aggregate by day (True) or all-time (False)
-        
-        Returns:
-            List of aggregated statistics
-        """
         if start_date is None:
             start_date = datetime.now(UTC) - timedelta(days=DEFAULT_DAYS)
         

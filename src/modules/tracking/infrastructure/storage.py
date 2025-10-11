@@ -12,13 +12,11 @@ from src.modules.tracking.domain.models import TrackingLink, TrackingEvent, Link
 
 
 class SQLiteTrackingRepository(TrackingRepository):
-    """SQLite implementation of tracking repository."""
     
     def __init__(self, db_path: Path):
         self.db_path = db_path
     
     async def initialize(self) -> None:
-        """Initialize database with idempotent migrations."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS tracking_links (
@@ -71,7 +69,6 @@ class SQLiteTrackingRepository(TrackingRepository):
             await db.commit()
     
     async def create_link(self, tag: str, slug: str) -> TrackingLink:
-        """Create a new tracking link."""
         now = datetime.now(UTC)
         
         async with aiosqlite.connect(self.db_path) as db:
@@ -95,7 +92,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         )
     
     async def get_link_by_id(self, link_id: int, include_deleted: bool = False) -> Optional[TrackingLink]:
-        """Get tracking link by ID."""
         async with aiosqlite.connect(self.db_path) as db:
             query = "SELECT link_id, tag, slug, created_at, deleted_at FROM tracking_links WHERE link_id = ?"
             if not include_deleted:
@@ -111,7 +107,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         return self._row_to_link(row)
     
     async def get_link_by_slug(self, slug: str, include_deleted: bool = False) -> Optional[TrackingLink]:
-        """Get tracking link by slug."""
         async with aiosqlite.connect(self.db_path) as db:
             query = "SELECT link_id, tag, slug, created_at, deleted_at FROM tracking_links WHERE slug = ?"
             if not include_deleted:
@@ -127,7 +122,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         return self._row_to_link(row)
     
     async def list_links(self, include_deleted: bool = False) -> List[TrackingLink]:
-        """List all tracking links."""
         async with aiosqlite.connect(self.db_path) as db:
             query = "SELECT link_id, tag, slug, created_at, deleted_at FROM tracking_links"
             if not include_deleted:
@@ -141,7 +135,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         return [self._row_to_link(row) for row in rows]
     
     async def soft_delete_link(self, link_id: int) -> bool:
-        """Soft delete a tracking link."""
         now = datetime.now(UTC)
         
         async with aiosqlite.connect(self.db_path) as db:
@@ -166,7 +159,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         event_type: str,
         first_start: bool
     ) -> TrackingEvent:
-        """Log a tracking event."""
         now = datetime.now(UTC)
         
         async with aiosqlite.connect(self.db_path) as db:
@@ -191,7 +183,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         )
     
     async def has_user_started_link(self, link_id: int, tg_user_id: int) -> bool:
-        """Check if user has already started this link."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 """
@@ -212,7 +203,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> List[TrackingEvent]:
-        """Get all events for a link with optional date filtering."""
         query = """
             SELECT event_id, link_id, tg_user_id, event_type, first_start, created_at 
             FROM tracking_events 
@@ -246,7 +236,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         end_date: Optional[datetime] = None,
         daily: bool = False
     ) -> List[LinkStats]:
-        """Get aggregated statistics."""
         if daily:
             query = """
                 SELECT 
@@ -321,7 +310,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         return results
     
     def _row_to_link(self, row) -> TrackingLink:
-        """Convert database row to TrackingLink."""
         deleted_at = datetime.fromisoformat(row[4]).replace(tzinfo=UTC) if row[4] else None
         
         return TrackingLink(
@@ -333,7 +321,6 @@ class SQLiteTrackingRepository(TrackingRepository):
         )
     
     def _row_to_event(self, row) -> TrackingEvent:
-        """Convert database row to TrackingEvent."""
         return TrackingEvent(
             event_id=row[0],
             link_id=row[1],

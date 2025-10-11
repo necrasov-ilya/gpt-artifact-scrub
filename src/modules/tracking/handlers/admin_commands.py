@@ -16,40 +16,24 @@ from src.modules.shared.services.anti_spam import AntiSpamGuard
 
 
 def _get_command_args(command: CommandObject | None) -> str:
-    """Extract command arguments."""
     if command is None or not command.args:
         return ""
     return command.args.strip()
 
 
 def _parse_track_args(args: str) -> tuple[str, Optional[str]]:
-    """
-    Parse /track command arguments.
-    
-    Supports:
-    - /track "Tag with spaces" slug
-    - /track TagWithoutSpaces slug
-    - /track "Tag only"
-    - /track TagOnly
-    
-    Returns:
-        Tuple of (tag, slug or None)
-    """
     if not args:
         raise ValueError("Empty arguments")
     
     try:
-        # Try to parse with shell-like quotes
         parts = shlex.split(args)
         if len(parts) == 1:
             return parts[0], None
         elif len(parts) == 2:
             return parts[0], parts[1]
         else:
-            # If more than 2 parts, first is tag, last is slug, rest ignored
             return parts[0], parts[-1]
     except ValueError:
-        # If shlex fails, fall back to simple split
         parts = args.split(maxsplit=1)
         if len(parts) == 1:
             return parts[0], None
@@ -58,12 +42,6 @@ def _parse_track_args(args: str) -> tuple[str, Optional[str]]:
 
 
 def _parse_date(date_str: str) -> Optional[datetime]:
-    """
-    Parse date string in YYYY-MM-DD format.
-    
-    Returns:
-        Datetime in UTC timezone or None if invalid
-    """
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         return dt.replace(tzinfo=UTC)
@@ -77,33 +55,15 @@ def create_tracking_admin_router(
     guard: AntiSpamGuard,
     admin_user_ids: frozenset[int]
 ) -> Router:
-    """
-    Create router for tracking admin commands.
-    
-    Commands:
-    - /track <tag> [slug] - Create new tracking link
-    - /track_list - List all active links
-    - /track_logs <link_id or slug> [start_date] [end_date] - Get event logs
-    - /track_stats [link_id or slug] [start_date] [end_date] - Get statistics with chart
-    - /track_delete <link_id or slug> - Soft delete a link
-    
-    Args:
-        tracking_service: Tracking service instance
-        analytics_service: Analytics service instance
-        guard: Anti-spam guard
-        admin_user_ids: Set of admin user IDs who can use these commands
-    """
     router = Router(name="tracking_admin")
     
     def is_admin(user_id: int) -> bool:
-        """Check if user is admin."""
         if not admin_user_ids:
             return False
         return user_id in admin_user_ids
     
     @router.message(Command("track"))
     async def cmd_track_create(message: Message, command: CommandObject) -> None:
-        """Create a new tracking link."""
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -149,7 +109,6 @@ def create_tracking_admin_router(
     
     @router.message(Command("track_list"))
     async def cmd_track_list(message: Message) -> None:
-        """List all active tracking links."""
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -180,7 +139,6 @@ def create_tracking_admin_router(
     
     @router.message(Command("track_logs"))
     async def cmd_track_logs(message: Message, command: CommandObject) -> None:
-        """Get event logs for a link."""
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -240,8 +198,7 @@ def create_tracking_admin_router(
             # Build header with summary
             lines = [
                 f"📊 <b>Логи: {escape(link.tag)}</b>{period}\n",
-                f"📈 Всего переходов: {total_events}",
-                f"👥 Уникальных пользователей: {unique_users}\n",
+                f"📈 Всего переходов: {total_events}\n",
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
             ]
             
@@ -280,7 +237,6 @@ def create_tracking_admin_router(
     
     @router.message(Command("track_stats"))
     async def cmd_track_stats(message: Message, command: CommandObject) -> None:
-        """Get statistics and chart for link(s)."""
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -340,7 +296,6 @@ def create_tracking_admin_router(
     
     @router.message(Command("track_delete"))
     async def cmd_track_delete(message: Message, command: CommandObject) -> None:
-        """Soft delete a tracking link."""
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -388,12 +343,6 @@ def create_tracking_admin_router(
     
     @router.message(Command("track_status"))
     async def cmd_track_status(message: Message, command: CommandObject) -> None:
-        """
-        Get comprehensive status for tracking links.
-        
-        Without arguments: shows summary for all links
-        With argument: shows detailed status for specific link with logs and chart button
-        """
         user = message.from_user
         if not user or not is_admin(user.id):
             return
@@ -435,8 +384,7 @@ def create_tracking_admin_router(
                     lines.append(
                         f"🔗 <b>{escape(link.tag)}</b> (#{link.link_id})\n"
                         f"   Slug: {escape(link.slug)}\n"
-                        f"   📈 Всего: {stat['total']} | "
-                        f"👥 Уникальных: {stat['unique']}\n"
+                        f"   📈 Всего: {stat['total']}\n"
                     )
                 
                 lines.append(
@@ -494,9 +442,8 @@ def create_tracking_admin_router(
                 lines = [
                     f"📊 <b>Статус: {escape(link.tag)}</b>{period}\n",
                     f"🆔 ID: {link.link_id} | Slug: {escape(link.slug)}",
-                    f"� Ссылка: <code>{tracking_url}</code>",
-                    f"📈 Всего переходов: {total_events}",
-                    f"� Уникальных пользователей: {unique_users}\n",
+                    f"🔗 Ссылка: <code>{tracking_url}</code>",
+                    f"📈 Всего переходов: {total_events}\n",
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
                 ]
                 
