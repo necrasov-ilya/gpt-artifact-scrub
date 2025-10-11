@@ -40,7 +40,6 @@ def _parse_key_value_args(args: str) -> dict[str, str]:
 
 
 def _is_logs_admin(user_id: int | None, admins: frozenset[int]) -> bool:
-    # Enforce strict whitelist: if whitelist is empty, deny everyone
     if not admins:
         return False
     if user_id is None:
@@ -60,8 +59,7 @@ def create_commands_router(
     allowed_log_admins = frozenset(admin_user_ids or set())
 
     @router.message(Command("start"))
-    async def start(message: Message) -> None:
-        # Record the start event so user appears in logs
+    async def start(message: Message, command: CommandObject) -> None:
         await usage_stats.record_event(message.from_user)
         await message.answer(START_TEXT_TEMPLATE.format(default_padding=default_padding))
 
@@ -103,7 +101,6 @@ def create_commands_router(
                 + "\n\nЧтобы изменить, укажите число 0..5: /padding 3",
             )
             return
-        # Only accept a single numeric token: /padding N
         tokens = args.split()
         if len(tokens) != 1 or not tokens[0].isdigit():
             await message.answer("Используйте формат: /padding N, где N — целое число 0..5.")
@@ -126,7 +123,6 @@ def create_commands_router(
     @router.message(Command("logs"))
     async def logs_cmd(message: Message, command: CommandObject) -> None:
         user_id = message.from_user.id if message.from_user else None
-        # If user is not whitelisted, do nothing (remain silent)
         if not _is_logs_admin(user_id, allowed_log_admins):
             return
 

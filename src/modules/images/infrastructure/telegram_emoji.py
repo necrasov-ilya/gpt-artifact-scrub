@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter
 from aiogram.types import FSInputFile, InputSticker
 
+from src.modules.shared.services.bot_info import BotInfoService
 from ..domain.models import EmojiPackRequest, EmojiPackResult
 from ..utils.retry import retry_async
 
@@ -15,19 +16,10 @@ from ..utils.retry import retry_async
 @dataclass
 class TelegramEmojiClient:
     bot: Bot
-    bot_username: str | None
+    bot_info: BotInfoService
     fragment_username: str | None
     creation_limit: int
     total_limit: int
-
-    async def _ensure_bot_username(self) -> str:
-        if self.bot_username:
-            return self.bot_username
-        me = await self.bot.get_me()
-        if not me.username:
-            raise RuntimeError("Bot username is required to create sticker sets")
-        self.bot_username = me.username
-        return self.bot_username
 
     def _build_short_name(self, request: EmojiPackRequest, username: str) -> str:
         suffix = f"_by_{username}".lower()
@@ -45,6 +37,15 @@ class TelegramEmojiClient:
             raise ValueError("Bot username is too long for sticker short name requirements")
         trimmed = sanitized[:max_base_len].rstrip("_") or "emoji"
         return f"{trimmed}{suffix}"
+    
+    async def _build_title(self) -> str:
+        """
+        Generate emoji pack title using bot username.
+        
+        Returns title like: "Created by @BotUsername"
+        """
+        username = await self.bot_info.get_username()
+        return f"Created by @{username}"
 
     async def _upload_tiles(self, user_id: int, paths: Sequence[str | bytes | FSInputFile]) -> list[str]:
         file_ids: list[str] = []
@@ -67,13 +68,10 @@ class TelegramEmojiClient:
     async def create_or_extend(self, request: EmojiPackRequest, tile_paths: Sequence[FSInputFile | str]) -> EmojiPackResult:
         if len(tile_paths) > self.creation_limit:
             raise ValueError("Too many tiles requested for a single run")
-        username = await self._ensure_bot_username()
+        
+        username = await self.bot_info.get_username()
         short_name = self._build_short_name(request, username)
-        # title = (
-        #     f"Emoji pack {request.grid.rows}x{request.grid.cols}"
-        #     f" (pad {request.padding}) by {request.user_id}"
-        # )
-        title = f"Created By @{username}"
+        title = await self._build_title()
 
         fs_inputs = [p if isinstance(p, FSInputFile) else FSInputFile(p) for p in tile_paths]
         file_ids = await self._upload_tiles(request.user_id, fs_inputs)

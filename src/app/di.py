@@ -21,6 +21,12 @@ from ..modules.images.services.user_settings import UserSettingsService
 from ..modules.text.services.normalization import TextNormalizationService
 from ..modules.shared.services.anti_spam import AntiSpamGuard
 from ..modules.shared.services.usage_stats import UsageStatsService
+from ..modules.shared.services.bot_info import BotInfoService
+from ..modules.tracking.infrastructure.storage import SQLiteTrackingRepository
+from ..modules.tracking.services.tracking_service import TrackingService
+from ..modules.tracking.services.analytics_service import AnalyticsService
+from ..modules.tracking.handlers.start_handler import create_tracking_middleware
+from ..modules.tracking.handlers.admin_commands import create_tracking_admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +40,16 @@ class AppContainer:
     user_settings: UserSettingsService
     anti_spam: AntiSpamGuard
     usage_stats: UsageStatsService
+    bot_info: BotInfoService
+    tracking_repository: SQLiteTrackingRepository
+    tracking_service: TrackingService
+    analytics_service: AnalyticsService
     emoji_service: EmojiPackService | None = None
     emoji_queue: EmojiProcessingQueue | None = None
     telegram_client: TelegramEmojiClient | None = None
 
     @classmethod
-    async def build(cls, config: AppConfig) -> "AppContainer":
+    async def build(cls, config: AppConfig, bot: Bot) -> "AppContainer":
         storage = Storage(config.storage_path)
         await storage.initialize()
         temp_files = TempFileManager(config.temp_dir, retention_minutes=config.temp_retention_minutes)
@@ -55,6 +65,17 @@ class AppContainer:
             grid_limit=grid_limit,
         )
         text_service = TextNormalizationService()
+        
+        bot_info = BotInfoService(bot=bot, config_username=config.bot_username)
+        
+        tracking_repository = SQLiteTrackingRepository(config.storage_path)
+        await tracking_repository.initialize()
+        tracking_service = TrackingService(
+            repository=tracking_repository,
+            bot_info=bot_info
+        )
+        analytics_service = AnalyticsService(repository=tracking_repository)
+        
         return cls(
             config=config,
             storage=storage,
@@ -63,6 +84,10 @@ class AppContainer:
             user_settings=user_settings,
             anti_spam=anti_spam,
             usage_stats=usage_stats,
+            bot_info=bot_info,
+            tracking_repository=tracking_repository,
+            tracking_service=tracking_service,
+            analytics_service=analytics_service,
         )
 
     def create_bot(self) -> Bot:
@@ -74,7 +99,7 @@ class AppContainer:
     def create_dispatcher(self, bot: Bot) -> Dispatcher:
         self.telegram_client = TelegramEmojiClient(
             bot=bot,
-            bot_username=self.config.bot_username,
+            bot_info=self.bot_info,
             fragment_username=self.config.fragment_username,
             creation_limit=self.config.emoji_creation_limit,
             total_limit=self.config.emoji_max_tiles,
@@ -90,6 +115,18 @@ class AppContainer:
             workers=self.config.emoji_queue_workers,
         )
         dispatcher = Dispatcher()
+        
+        dispatcher.message.middleware(create_tracking_middleware(self.tracking_service))
+        
+        dispatcher.include_router(
+            create_tracking_admin_router(
+                tracking_service=self.tracking_service,
+                analytics_service=self.analytics_service,
+                guard=self.anti_spam,
+                admin_user_ids=frozenset(self.config.admin_user_ids)
+            )
+        )
+        
         dispatcher.include_router(
             create_commands_router(
                 self.user_settings,
