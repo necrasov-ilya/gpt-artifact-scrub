@@ -34,6 +34,11 @@ class AppConfig(BaseSettings):
         description="Максимальное количество тайлов в опциях сетки (если указано)",
     )
 
+    # Video/Animation settings
+    video_max_duration: float = Field(3.0, ge=0.5, le=10.0, alias="VIDEO_MAX_DURATION")
+    video_target_fps: int = Field(30, ge=10, le=60, alias="VIDEO_TARGET_FPS")
+    video_format: Literal["webm"] = Field("webm", alias="VIDEO_FORMAT")
+
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field("INFO", alias="LOG_LEVEL")
     logs_page_size: int = Field(20, ge=1, alias="LOGS_PAGE_SIZE")
 

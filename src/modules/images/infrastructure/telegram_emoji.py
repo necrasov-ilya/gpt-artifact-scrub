@@ -47,14 +47,21 @@ class TelegramEmojiClient:
         username = await self.bot_info.get_username()
         return f"Created by @{username}"
 
-    async def _upload_tiles(self, user_id: int, paths: Sequence[str | bytes | FSInputFile]) -> list[str]:
+    async def _upload_tiles(
+        self, 
+        user_id: int, 
+        paths: Sequence[str | bytes | FSInputFile],
+        is_animated: bool = False,
+    ) -> list[str]:
         file_ids: list[str] = []
+        sticker_format = "video" if is_animated else "static"
+        
         for path in paths:
             async def _call() -> str:
                 file = await self.bot.upload_sticker_file(
                     user_id=user_id,
                     sticker=path if isinstance(path, FSInputFile) else FSInputFile(path),
-                    sticker_format="static",
+                    sticker_format=sticker_format,
                 )
                 return file.file_id
 
@@ -72,10 +79,13 @@ class TelegramEmojiClient:
         username = await self.bot_info.get_username()
         short_name = self._build_short_name(request, username)
         title = await self._build_title()
+        
+        is_animated = request.is_animated
+        sticker_format = "video" if is_animated else "static"
 
         fs_inputs = [p if isinstance(p, FSInputFile) else FSInputFile(p) for p in tile_paths]
-        file_ids = await self._upload_tiles(request.user_id, fs_inputs)
-        stickers = [InputSticker(sticker=file_id, format="static", emoji_list=["😀"]) for file_id in file_ids]
+        file_ids = await self._upload_tiles(request.user_id, fs_inputs, is_animated=is_animated)
+        stickers = [InputSticker(sticker=file_id, format=sticker_format, emoji_list=["😀"]) for file_id in file_ids]
 
         async def _get_set():
             return await self.bot.get_sticker_set(name=short_name)

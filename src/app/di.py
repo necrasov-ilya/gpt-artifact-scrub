@@ -109,6 +109,8 @@ class AppContainer:
             telegram_client=self.telegram_client,
             temp_dir=self.config.temp_dir,
             tile_size=self.config.emoji_tile_size,
+            video_target_fps=self.config.video_target_fps,
+            video_max_duration=self.config.video_max_duration,
         )
         self.emoji_queue = EmojiProcessingQueue(
             self.emoji_service,
@@ -150,6 +152,8 @@ class AppContainer:
                 anti_spam=self.anti_spam,
                 grid_option_cap=self.config.emoji_grid_tile_cap,
                 usage_stats=self.usage_stats,
+                video_max_duration=self.config.video_max_duration,
+                video_target_fps=self.config.video_target_fps,
             )
         )
         dispatcher.include_router(create_unsupported_router())

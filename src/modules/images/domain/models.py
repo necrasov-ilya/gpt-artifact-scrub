@@ -38,6 +38,8 @@ class EmojiPackRequest:
     padding: int
     file_unique_id: str
     requested_at: datetime
+    is_animated: bool = False
+    duration: float | None = None
 
 
 @dataclass(frozen=True)
