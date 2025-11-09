@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Optional, Tuple
 
 from ..domain.models import EmojiJobOutcome, EmojiPackRequest
 from .emoji_pack import EmojiPackService
 
+logger = logging.getLogger(__name__)
+
 
 class EmojiProcessingQueue:
-    def __init__(self, service: EmojiPackService, *, workers: int = 2) -> None:
+    def __init__(
+        self,
+        service: EmojiPackService,
+        *,
+        workers: int = 2,
+        job_timeout: float = 120.0,
+    ) -> None:
         self._service = service
         self._workers = workers
+        self._job_timeout = job_timeout
         self._queue: asyncio.Queue[Optional[Tuple[EmojiPackRequest, asyncio.Future[EmojiJobOutcome]]]] = (
             asyncio.Queue()
         )
@@ -44,8 +54,32 @@ class EmojiProcessingQueue:
                 break
             request, future = item
             try:
-                outcome = await self._service.process(request)
-            except Exception as exc:  # noqa: BLE001
+                outcome = await asyncio.wait_for(
+                    self._service.process(request),
+                    timeout=self._job_timeout,
+                )
+            except asyncio.TimeoutError:
+                exc = RuntimeError(
+                    f"Emoji pack processing timed out after {self._job_timeout}s for user {request.user_id}"
+                )
+                logger.error(
+                    "Job timeout: user_id=%s, file=%s, grid=%s",
+                    request.user_id,
+                    request.file_path,
+                    request.grid.encode(),
+                    exc_info=True,
+                )
+                if not future.done():
+                    future.set_exception(exc)
+            except asyncio.CancelledError:
+                logger.warning("Worker cancelled during job processing for user %s", request.user_id)
+                raise  # Re-raise to allow clean shutdown
+            except Exception as exc:
+                logger.exception(
+                    "Unexpected error processing emoji pack for user %s: %s",
+                    request.user_id,
+                    exc,
+                )
                 if not future.done():
                     future.set_exception(exc)
             else:

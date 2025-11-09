@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 from pathlib import Path
 from datetime import UTC, datetime
 from typing import Iterable
@@ -9,9 +10,12 @@ from uuid import uuid4
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+
+logger = logging.getLogger(__name__)
 
 from ...modules.images.domain.models import EmojiGridOption, EmojiPackRequest, EmojiPackResult
 from ...modules.images.infrastructure.storage import Storage
@@ -195,9 +199,27 @@ def create_emoji_router(
         async def finalize() -> None:
             try:
                 outcome = await future
-            except Exception as exc:  # noqa: BLE001
+            except asyncio.CancelledError:
+                logger.warning("Emoji pack creation cancelled for user %s", callback.from_user.id)
+                raise  # Re-raise to allow clean cancellation
+            except (TelegramBadRequest, TelegramNetworkError, ValueError, RuntimeError) as exc:
+                logger.error(
+                    "Emoji pack creation failed for user %s: %s",
+                    callback.from_user.id,
+                    exc,
+                    exc_info=True,
+                )
                 await processing_message.edit_text(
                     f"Не получилось создать пак: {exc}",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Unexpected error creating emoji pack for user %s",
+                    callback.from_user.id,
+                )
+                await processing_message.edit_text(
+                    "Произошла неожиданная ошибка. Попробуйте позже.",
                     parse_mode=ParseMode.HTML,
                 )
             else:
