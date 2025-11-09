@@ -23,19 +23,29 @@ class TelegramEmojiClient:
 
     def _build_short_name(self, request: EmojiPackRequest, username: str) -> str:
         suffix = f"_by_{username}".lower()
-        timestamp = request.requested_at.strftime("%Y%m%d%H%M%S%f")
-        file_marker = re.sub(r"[^a-z0-9]", "", request.file_path.stem.lower())[:6]
-        unique_marker = re.sub(r"[^a-z0-9]", "", request.file_unique_id.lower())[:6]
-        entropy = file_marker or unique_marker or "file"
-        base = (
-            f"emoji_{request.user_id}_{timestamp}_{request.grid.rows}x{request.grid.cols}_"
-            f"p{request.padding}_{entropy}"
-        ).lower()
-        sanitized = re.sub(r"[^a-z0-9_]", "_", base)
+        
+        timestamp_hash = str(abs(hash(request.requested_at.isoformat())))[:8]
+        file_marker = re.sub(r"[^a-z0-9]", "", request.file_path.stem.lower())[:4]
+        unique_marker = re.sub(r"[^a-z0-9]", "", request.file_unique_id.lower())[:4]
+        
+        parts = [
+            "e",
+            str(request.user_id)[:8],
+            f"{request.grid.rows}x{request.grid.cols}",
+            f"p{request.padding}" if request.padding > 0 else None,
+            timestamp_hash,
+            file_marker or unique_marker or "img",
+        ]
+        
+        base = "_".join(p for p in parts if p)
+        sanitized = re.sub(r"[^a-z0-9_]", "_", base).lower()
+        sanitized = re.sub(r"_+", "_", sanitized)
+        
         max_base_len = 64 - len(suffix)
         if max_base_len <= 0:
             raise ValueError("Bot username is too long for sticker short name requirements")
-        trimmed = sanitized[:max_base_len].rstrip("_") or "emoji"
+        
+        trimmed = sanitized[:max_base_len].rstrip("_") or "e"
         return f"{trimmed}{suffix}"
     
     async def _build_title(self) -> str:
