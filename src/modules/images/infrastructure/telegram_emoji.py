@@ -22,7 +22,8 @@ class TelegramEmojiClient:
     total_limit: int
 
     def _build_short_name(self, request: EmojiPackRequest, username: str) -> str:
-        suffix = f"_by_{username}".lower()
+        clean_username = re.sub(r"[^a-z0-9_]", "", username.lower())
+        suffix = f"_by_{clean_username}"
         
         timestamp_hash = str(abs(hash(request.requested_at.isoformat())))[:8]
         file_marker = re.sub(r"[^a-z0-9]", "", request.file_path.stem.lower())[:4]

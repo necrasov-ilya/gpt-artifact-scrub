@@ -21,7 +21,7 @@ class BotInfoService:
             config_username: Pre-configured username from config (optional)
         """
         self._bot = bot
-        self._cached_username: str | None = config_username
+        self._cached_username: str | None = config_username.lstrip("@") if config_username else None
         self._initialized = config_username is not None
     
     async def get_username(self) -> str:
@@ -41,7 +41,7 @@ class BotInfoService:
         if not me.username:
             raise RuntimeError("Bot username is required but not configured in Telegram")
         
-        self._cached_username = me.username
+        self._cached_username = me.username.lstrip("@")
         self._initialized = True
         
         return self._cached_username
